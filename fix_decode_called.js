@@ -14,3 +14,4 @@ content = content.replace(
 // And 1166 NameError in test_oidc_session_rejects_admin_role_claim.
 
 // Let's just remove `assert decode_called is False` if `decode_called = False` was not declared in the function scope.
+fs.writeFileSync(filePath, content);

@@ -1,4 +1,3 @@
-import re
 with open("backend/tests/test_auth_real.py", "r") as f:
     lines = f.readlines()
 
