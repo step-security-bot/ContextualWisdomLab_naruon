@@ -1,7 +1,12 @@
+import datetime
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from services.reply_tracking_service import (
     _parse_multiple_addresses,
+    check_missing_replies,
+    configured_email_addresses,
     message_is_from_user,
 )
 
@@ -17,18 +22,6 @@ def test_message_is_from_user_empty():
         recipients = ""
 
     assert message_is_from_user(DummyEmail(), set()) is False
-
-
-import datetime
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-
-from db.models import Email, TenantConfig
-from services.reply_tracking_service import (
-    check_missing_replies,
-    configured_email_addresses,
-)
 
 
 def test_configured_email_addresses():
@@ -89,3 +82,55 @@ async def test_check_missing_replies_with_config():
     result = await check_missing_replies(session, "user1", "org1")
     assert len(result) == 1
     assert result[0].message_id == "msg1"
+
+
+import pytest
+
+from services.reply_tracking_service import reply_tracking_thread_key
+
+
+def test_reply_tracking_thread_key_fallback():
+    class DummyEmail:
+        thread_id = None
+        message_id = "msg1"
+
+    assert reply_tracking_thread_key(DummyEmail()) == "msg1"
+
+
+import pytest
+
+from services.reply_tracking_service import detect_reply_tracking
+
+
+def test_detect_reply_tracking_no_body():
+    assert detect_reply_tracking(None) is False
+
+
+import datetime
+
+import pytest
+
+from db.models import Email
+from services.reply_tracking_service import thread_reply_candidate
+
+
+def test_thread_reply_candidate_external_latest():
+    class DummyEmail(Email):
+        def __init__(self, sender, date, body):
+            self.sender = sender
+            self.date = date
+            self.body = body
+            self.recipients = ""
+
+    e1 = DummyEmail(
+        "other@example.com",
+        datetime.datetime(2023, 1, 2, tzinfo=datetime.timezone.utc),
+        "reply",
+    )
+    e2 = DummyEmail(
+        "test@example.com",
+        datetime.datetime(2023, 1, 1, tzinfo=datetime.timezone.utc),
+        "please reply",
+    )
+
+    assert thread_reply_candidate([e1, e2], {"test@example.com"}) is None
