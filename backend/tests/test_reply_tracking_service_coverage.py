@@ -122,11 +122,6 @@ def test_thread_reply_candidate_external_latest():
     assert thread_reply_candidate([e1, e2], {"test@example.com"}) is None
 
 
-import pytest
-
-from services.reply_tracking_service import configured_email_addresses
-
-
 def test_configured_email_addresses_empty_username():
     class DummyConfig:
         smtp_username = ""
