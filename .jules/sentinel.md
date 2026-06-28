@@ -55,3 +55,7 @@
 **Vulnerability:** The API proxy's `sameOriginStateChangingRequest` function previously allowed state-changing requests if both `sec-fetch-site` and `origin` headers were missing, creating a potential CSRF vector if an attacker suppressed the Origin header.
 **Learning:** Default-allow fallbacks for missing security metadata can silently bypass critical protections, especially when relying solely on cookie-based authentication.
 **Prevention:** Always fail securely by defaulting to `false` when required origin/referer security metadata is absent, ensuring strict enforcement for state-changing operations.
+## 2026-06-28 - JWT Algorithm Confusion Vulnerability
+**Vulnerability:** The backend `_decode_cached_oidc_session_payload` did not verify that the algorithm specified in the unverified header matched the required asymmetric algorithm (`RS256`) before verifying the token signature. This could allow an attacker to specify a symmetric algorithm (`HS256`) and forge a token using the public key as the HMAC secret.
+**Learning:** Security frameworks and token parsing libraries may perform cryptographic verification using whatever algorithm is requested by the header if the server logic does not pre-validate it against an explicit policy constraint.
+**Prevention:** Always enforce strong algorithm constraints (e.g., matching the `alg` header to the configured asymmetric algorithm) on tokens prior to executing the decode/verification step.

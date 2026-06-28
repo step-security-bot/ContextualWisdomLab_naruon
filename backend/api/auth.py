@@ -246,6 +246,8 @@ def _decode_cached_oidc_session_payload(token: str) -> dict[str, Any]:
     if not _cached_oidc_signing_keys:
         raise _authentication_error()
     header = _oidc_unverified_header(token)
+    if header.get("alg") != OIDC_SIGNING_ALGORITHM:
+        raise _authentication_error()
     key_id = header["kid"].strip()
 
     for signing_key in _cached_oidc_signing_keys:
