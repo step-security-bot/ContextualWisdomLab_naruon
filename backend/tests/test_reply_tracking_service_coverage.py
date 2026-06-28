@@ -3,11 +3,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from db.models import Email
 from services.reply_tracking_service import (
     _parse_multiple_addresses,
     check_missing_replies,
     configured_email_addresses,
+    detect_reply_tracking,
     message_is_from_user,
+    reply_tracking_thread_key,
+    thread_reply_candidate,
 )
 
 
@@ -84,11 +88,6 @@ async def test_check_missing_replies_with_config():
     assert result[0].message_id == "msg1"
 
 
-import pytest
-
-from services.reply_tracking_service import reply_tracking_thread_key
-
-
 def test_reply_tracking_thread_key_fallback():
     class DummyEmail:
         thread_id = None
@@ -97,21 +96,8 @@ def test_reply_tracking_thread_key_fallback():
     assert reply_tracking_thread_key(DummyEmail()) == "msg1"
 
 
-import pytest
-
-from services.reply_tracking_service import detect_reply_tracking
-
-
 def test_detect_reply_tracking_no_body():
     assert detect_reply_tracking(None) is False
-
-
-import datetime
-
-import pytest
-
-from db.models import Email
-from services.reply_tracking_service import thread_reply_candidate
 
 
 def test_thread_reply_candidate_external_latest():
@@ -134,3 +120,26 @@ def test_thread_reply_candidate_external_latest():
     )
 
     assert thread_reply_candidate([e1, e2], {"test@example.com"}) is None
+
+
+import pytest
+
+from services.reply_tracking_service import configured_email_addresses
+
+
+def test_configured_email_addresses_empty_username():
+    class DummyConfig:
+        smtp_username = ""
+        imap_username = ""
+
+    addresses = configured_email_addresses(DummyConfig())
+    assert len(addresses) == 0
+
+
+def test_configured_email_addresses_invalid_username():
+    class DummyConfig:
+        smtp_username = "invalid_address"
+        imap_username = ""
+
+    addresses = configured_email_addresses(DummyConfig())
+    assert len(addresses) == 1
