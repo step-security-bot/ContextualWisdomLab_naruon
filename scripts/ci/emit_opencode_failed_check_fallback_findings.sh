@@ -577,5 +577,6 @@ emit_strix_provider_failure_finding "$strix_evidence_file"
 emit_strix_cancelled_without_log_finding "$strix_evidence_file"
 
 if [ "$finding_index" -eq 0 ]; then
-	printf 'No deterministic missing-string markers or Strix report locations were recognized. Use the failed-check evidence below to map each failed check to exact local source lines before approving.\n\n'
+	printf 'No source-backed failed-check fallback finding matched the available evidence; leaving the PR review unchanged so the current-head review can be rerun with better evidence.\n' >&2
+	exit 1
 fi

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from db.models import TenantConfig
+from runner.utils.dispatch import dispatch_error
 from services.email_client import EmailMessageParams, SmtpConfig, send_email
 from services.imap_worker import ImapSyncWorker
 
@@ -38,14 +39,14 @@ class LocalMailAdapters:
     async def send_smtp(self, payload: dict[str, Any]) -> dict[str, Any]:
         account = self._account_for_payload(payload)
         if account is None:
-            return self._error("account_not_configured")
+            return dispatch_error("account_not_configured")
         if (
             not account.smtp_server
             or not account.smtp_port
             or not account.smtp_username
             or not account.smtp_password
         ):
-            return self._error("account_configuration_incomplete")
+            return dispatch_error("account_configuration_incomplete")
 
         try:
             message_params = EmailMessageParams(
@@ -56,7 +57,7 @@ class LocalMailAdapters:
                 references=self._optional_payload_text(payload, "references"),
             )
         except ValueError:
-            return self._error("invalid_payload")
+            return dispatch_error("invalid_payload")
 
         try:
             send_result = await send_email(
@@ -69,7 +70,7 @@ class LocalMailAdapters:
                 ),
             )
         except ValueError:
-            return self._error("provider_destination_not_allowed")
+            return dispatch_error("provider_destination_not_allowed")
 
         if send_result.get("status") == "sent" and not send_result.get("simulated"):
             return {
@@ -77,19 +78,19 @@ class LocalMailAdapters:
                 "provider_write_executed": True,
                 "provider_status": send_result["status"],
             }
-        return self._error("provider_write_not_executed")
+        return dispatch_error("provider_write_not_executed")
 
     async def fetch_imap(self, payload: dict[str, Any]) -> dict[str, Any]:
         account = self._account_for_payload(payload)
         if account is None:
-            return self._error("account_not_configured")
+            return dispatch_error("account_not_configured")
         if (
             not account.imap_server
             or not account.imap_port
             or not account.imap_username
             or not account.imap_password
         ):
-            return self._error("account_configuration_incomplete")
+            return dispatch_error("account_configuration_incomplete")
 
         worker = self._imap_worker_factory()
         imported_count = await worker._sync_tenant(self._tenant_config(account))
@@ -134,11 +135,3 @@ class LocalMailAdapters:
         if not isinstance(value, str) or not value.strip():
             raise ValueError("invalid payload")
         return value
-
-    def _error(self, error_code: str) -> dict[str, Any]:
-        return {
-            "status": "error",
-            "error": error_code,
-            "error_code": error_code,
-            "provider_write_executed": False,
-        }

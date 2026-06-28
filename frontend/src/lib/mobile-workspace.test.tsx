@@ -84,7 +84,8 @@ describe("mobile-workspace", () => {
       expect(result).toBe("inbox");
 
       expect(useSyncExternalStoreArgs).toHaveLength(3);
-      const [subscribe, getSnapshot, getServerSnapshot] = useSyncExternalStoreArgs;
+      const [subscribe, getSnapshot, getServerSnapshot] =
+        useSyncExternalStoreArgs;
 
       // Test getServerSnapshot
       expect(getServerSnapshot()).toBe("inbox");
@@ -118,8 +119,45 @@ describe("mobile-workspace", () => {
 
       unsubscribe();
 
-      expect(removeEventListenerSpy).toHaveBeenCalledWith("hashchange", listener);
-      expect(window.__naruonMobileWorkspace.listeners.has(listener)).toBe(false);
+      expect(removeEventListenerSpy).toHaveBeenCalledWith(
+        "hashchange",
+        listener,
+      );
+      expect(window.__naruonMobileWorkspace.listeners.has(listener)).toBe(
+        false,
+      );
+    });
+  });
+
+  describe("server-side rendering simulation", () => {
+    beforeEach(() => {
+      vi.stubGlobal("window", undefined);
+      useSyncExternalStoreArgs = [];
+    });
+
+    afterEach(() => {
+      setMobileWorkspaceView("inbox", { updateHash: false });
+      vi.unstubAllGlobals();
+    });
+
+    it("keeps server-side view updates in the server store", () => {
+      expect(() => setMobileWorkspaceView("calendar")).not.toThrow();
+
+      expect(useMobileWorkspaceView()).toBe("calendar");
+
+      expect(useSyncExternalStoreArgs).toHaveLength(3);
+      const [, getSnapshot, getServerSnapshot] = useSyncExternalStoreArgs;
+      expect(getSnapshot()).toBe("calendar");
+      expect(getServerSnapshot()).toBe("inbox");
+    });
+
+    it("uses the inbox fallback for a fresh server render", () => {
+      expect(useMobileWorkspaceView()).toBe("inbox");
+
+      expect(useSyncExternalStoreArgs).toHaveLength(3);
+      const [, getSnapshot, getServerSnapshot] = useSyncExternalStoreArgs;
+      expect(getSnapshot()).toBe("inbox");
+      expect(getServerSnapshot()).toBe("inbox");
     });
   });
 });

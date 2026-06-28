@@ -87,7 +87,7 @@ def test_validate_global_address_private_rejected_without_hostname(monkeypatch):
     "candidate, expected",
     [
         ("192.168.1.1", True),
-        ("0.0.0.0", True),
+        ("0.0.0.0", True),  # nosec B104
         ("255.255.255.255", True),
         ("127.0.0.1", True),
         ("::1", True),

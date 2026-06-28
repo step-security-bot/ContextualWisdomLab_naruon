@@ -19,7 +19,7 @@ calendar provider, file store, or cross-tenant authority.
 | `/dav` `PROPFIND` database backing | Implemented | `backend/api/dav.py`, `backend/services/webdav_service.py`, `backend/tests/test_dav_api.py` | Direct DAV mutations still fail closed with `501` until source/capability/credential/ETag execution is proven. |
 | Alembic migrations | Implemented | `backend/alembic`, `backend/scripts/migrate_db.py`, `backend/tests/test_alembic_migrations.py` | Keep `bootstrap_db.py` local/dev only. |
 | POP3 runtime sync | Implemented | `backend/services/pop3_worker.py`, `backend/main.py`, `backend/tests/test_pop3_worker.py` | Add production scheduling knobs and sync-lag telemetry. |
-| Reply SLA scheduler | Implemented | `backend/services/reply_sla_scheduler.py`, `backend/main.py`, `backend/tests/test_reply_sla_scheduler.py` | Add tenant-configurable SLA policy and notification channels. |
+| Overdue reply follow-up scheduler | Implemented | `backend/services/reply_sla_scheduler.py`, `backend/main.py`, `backend/tests/test_reply_sla_scheduler.py` | Add tenant-configurable reply deadline policy and notification channels. |
 | CalDAV/WebDAV provider execution | Implemented with guardrails | `backend/api/calendar.py`, `backend/api/data.py`, `backend/api/runner_ws.py`, `backend/services/provider_writeback_retry_service.py`, `backend/runner/local_dav_adapters.py` | Broader provider object types must add source-specific materialization APIs before execution. |
 | OIDC browser route | Implemented with guardrails | `frontend/src/app/auth/oidc/login/route.ts`, `frontend/src/app/auth/oidc/callback/route.ts`, `backend/api/auth.py` | Production still needs selected IdP rollout, runbooks, key rotation, and mailbox-owner backfill. |
 

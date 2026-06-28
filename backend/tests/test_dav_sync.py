@@ -95,3 +95,40 @@ async def test_webdav_sync_skips_hostless_https_url():
     statement_text = str(session_mock.execute.call_args.args[0])
     assert "webdav_accounts.user_id" in statement_text
     assert "webdav_accounts.organization_id" in statement_text
+
+@pytest.mark.asyncio
+async def test_webdav_sync_skips_non_https_url():
+    """
+    Test that sync skips a WebDAV account if the URL is not HTTPS.
+    """
+    from services.webdav_service import sync_webdav_folders
+
+    session_mock = AsyncMock()
+    account_mock = MagicMock()
+    account_mock.source_uid = "webdav_src_primary"
+    account_mock.server_url = "http://webdav.example.com"
+
+    execute_res = MagicMock()
+    execute_res.scalars.return_value.all.return_value = [account_mock]
+    session_mock.execute.return_value = execute_res
+
+    with patch("services.webdav_service.logger") as logger_mock:
+        await sync_webdav_folders(session_mock, "user_1", "org_1")
+
+        logger_mock.warning.assert_called_once()
+        warning_args = logger_mock.warning.call_args.args
+        assert "Invalid WebDAV server URL" in warning_args[0]
+        assert isinstance(warning_args[2], ValueError)
+        assert str(warning_args[2]) == "WebDAV server_url must use HTTPS"
+
+        success_calls = [
+            call.args
+            for call in logger_mock.info.call_args_list
+            if call.args[:1]
+            == ("Fetched folder structures for WebDAV source %s",)
+        ]
+        assert success_calls == []
+
+    statement_text = str(session_mock.execute.call_args.args[0])
+    assert "webdav_accounts.user_id" in statement_text
+    assert "webdav_accounts.organization_id" in statement_text

@@ -392,6 +392,15 @@ def _strip_tag_like_segments(value: str) -> str:
     return "".join(parts)
 
 
+def _normalize_plain_text(value: str) -> str:
+    lines = []
+    for line in value.splitlines():
+        normalized_line = " ".join(_strip_tag_like_segments(line).split())
+        if normalized_line:
+            lines.append(normalized_line)
+    return "\n".join(lines).strip()
+
+
 class _PlainTextHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -434,15 +443,13 @@ class _PlainTextHTMLParser(HTMLParser):
             self._parts.append(_strip_tag_like_segments(data))
 
     def get_text(self) -> str:
-        lines = []
-        for line in "".join(self._parts).splitlines():
-            normalized_line = " ".join(line.split())
-            if normalized_line:
-                lines.append(normalized_line)
-        return "\n".join(lines).strip()
+        return _normalize_plain_text("".join(self._parts))
 
 
 def strip_html_markup(value: str) -> str:
+    if "<" not in value and "&" not in value:
+        return _normalize_plain_text(value)
+
     decoded = _decode_entities(value)
     masked, placeholders = _mask_angle_emails(decoded)
     parser = _PlainTextHTMLParser()

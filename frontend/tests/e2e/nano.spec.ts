@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIResponse } from '@playwright/test';
 import crypto from 'node:crypto';
 
 import { mockDashboardApi } from './helpers';
@@ -48,6 +48,25 @@ function signLiveSession(expiresInSeconds = 300): string {
 
 function liveSessionCookie(token: string): string {
   return `naruon_session=${token}`;
+}
+
+function sameOriginRequestHeaders(token: string): Record<string, string> {
+  const origin = new URL(process.env.LIVE_BASE_URL ?? 'http://127.0.0.1:18080').origin;
+  return {
+    Cookie: liveSessionCookie(token),
+    Origin: origin,
+    Referer: `${origin}/`,
+  };
+}
+
+async function responseSummary(response: APIResponse): Promise<string> {
+  return `${response.status()} ${response.statusText()}: ${await response.text()}`;
+}
+
+async function expectOkResponse(response: APIResponse): Promise<void> {
+  if (!response.ok()) {
+    expect(response.ok(), await responseSummary(response)).toBeTruthy();
+  }
 }
 
 test('nano test: verify user requested features', async ({ page }) => {
@@ -104,26 +123,26 @@ test('nano live model: ollama gemma4 e2b chat and embedding search complete', as
   );
 
   const token = signLiveSession(1_200);
-  const cookie = liveSessionCookie(token);
+  const headers = sameOriginRequestHeaders(token);
 
   const draftResponse = await request.post('/api/llm/draft', {
-    headers: { Cookie: cookie },
+    headers,
     data: {
       email_body: 'Live Gemma4 verification request from Naruon E2E.',
       instruction: 'Reply with one concise Korean sentence confirming receipt.',
     },
     timeout: 600_000,
   });
-  expect(draftResponse.ok()).toBeTruthy();
+  await expectOkResponse(draftResponse);
   const draftBody = await draftResponse.json();
   expect(String(draftBody.draft ?? '').trim().length).toBeGreaterThan(0);
 
   const searchResponse = await request.post('/api/search', {
-    headers: { Cookie: cookie },
+    headers,
     data: { query: 'Live E2E Release', limit: 3 },
     timeout: 600_000,
   });
-  expect(searchResponse.ok()).toBeTruthy();
+  await expectOkResponse(searchResponse);
   const searchBody = await searchResponse.json();
   const subjects = new Set(
     (searchBody.results ?? []).map((item: { subject?: string | null }) => item.subject),

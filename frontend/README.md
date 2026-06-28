@@ -1,6 +1,6 @@
 # AI Email Client Frontend
 
-Next.js app for the threaded inbox, email detail pane, AI summary, action items, reply composer, and network graph.
+Next.js app for the threaded inbox, email detail pane, 맥락 종합, 실행 항목, reply composer, and 관계 맥락.
 
 ## Setup
 

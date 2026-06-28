@@ -1,10 +1,6 @@
 name: OpenCode Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -19,6 +15,10 @@ on:
         description: Pull request base SHA
         required: true
         type: string
+      pr_head_ref:
+        description: Pull request head branch
+        required: false
+        type: string
       pr_head_sha:
         description: Pull request head SHA
         required: true
@@ -32,104 +32,9 @@ permissions:
   contents: read
 
 jobs:
-  opencode-review:
-    if: >-
-      github.event_name == 'pull_request'
-      && github.event.pull_request.draft != true
-      && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - name: Wait for trusted OpenCode approval review
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          APPROVAL_WAIT_ATTEMPTS: "150"
-          APPROVAL_WAIT_SLEEP_SECONDS: "30"
-        run: |
-          set -euo pipefail
-
-          owner="${GH_REPOSITORY%%/*}"
-          name="${GH_REPOSITORY#*/}"
-          attempts="${APPROVAL_WAIT_ATTEMPTS:-150}"
-          sleep_seconds="${APPROVAL_WAIT_SLEEP_SECONDS:-30}"
-
-          read -r -d '' reviews_query <<'GRAPHQL' || true
-          query($owner:String!,$name:String!,$number:Int!) {
-            repository(owner:$owner,name:$name) {
-              pullRequest(number:$number) {
-                reviews(first: 100) {
-                  nodes {
-                    author {
-                      login
-                    }
-                    state
-                    submittedAt
-                    commit {
-                      oid
-                    }
-                  }
-                }
-              }
-            }
-          }
-          GRAPHQL
-
-          for attempt in $(seq 1 "$attempts"); do
-            review_state="$(
-              gh api graphql \
-                -f owner="$owner" \
-                -f name="$name" \
-                -F number="$PR_NUMBER" \
-                -f query="$reviews_query" \
-                --jq '
-                  [
-                    (.data.repository.pullRequest.reviews.nodes // [])
-                    | .[]
-                    | select((.author.login // "") == "opencode-agent" or (.author.login // "") == "opencode-agent[bot]")
-                    | select((.commit.oid // "") == env.HEAD_SHA)
-                  ]
-                  | last
-                  | .state // "MISSING"
-                '
-            )"
-
-            if [ "$review_state" = "APPROVED" ]; then
-              printf 'Trusted OpenCode approval exists for head %s.\n' "$HEAD_SHA"
-              exit 0
-            fi
-
-            if [ "$review_state" = "CHANGES_REQUESTED" ]; then
-              echo "::error::Trusted OpenCode requested changes for head ${HEAD_SHA}; failing the bridge check instead of waiting for an approval that will not arrive."
-              exit 1
-            fi
-
-            printf 'Waiting for trusted OpenCode approval for head %s (%s/%s, current=%s).\n' \
-              "$HEAD_SHA" "$attempt" "$attempts" "$review_state"
-            if [ "$attempt" -lt "$attempts" ]; then
-              sleep "$sleep_seconds"
-            fi
-          done
-
-          echo "::error::Timed out waiting for a trusted OpenCode approval review on head ${HEAD_SHA}."
-          exit 1
-
   opencode-review-target:
     name: opencode-review
-    if: >-
-      github.event_name == 'workflow_dispatch'
-      || (
-        github.event_name == 'pull_request_target'
-        && github.event.pull_request.draft != true
-        && github.event.pull_request.head.repo.full_name == github.repository
-      )
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -142,13 +47,6 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout trusted review workflow
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
       - name: Checkout trusted review workflow for manual PR review
         if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -508,7 +406,7 @@ jobs:
           cite the evidence type behind the claim (nearby implementation, matching existing example,
           cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR
           scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include
-          one compact Mermaid graph mapping the changed surface to the main risk, fix, and verification path.
+          one compact Mermaid software-flow graph that names the changed file or surface and maps it to the affected execution path, main risk, and verification path; do not use generic placeholder nodes like Changed surface or Main risk.
           Use an OpenCode-owned review structure compatible with Copilot Review and CodeRabbitAI formatting:
           include a concise pull request overview, then severity-ordered findings with actionable bullets, then
           any extra summary context after the findings. Keep raw tool logs out of the main review body.
@@ -556,7 +454,7 @@ jobs:
           cite the evidence type behind the claim (nearby implementation, matching existing example,
           cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR
           scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include
-          one compact Mermaid graph mapping the changed surface to the main risk, fix, and verification path.
+          one compact Mermaid software-flow graph that names the changed file or surface and maps it to the affected execution path, main risk, and verification path; do not use generic placeholder nodes like Changed surface or Main risk.
           Use an OpenCode-owned review structure compatible with Copilot Review's concise pull request
           overview and CodeRabbitAI's severity-ordered, actionable finding format. Put any extra summary
           context after findings, keep raw tool logs out of the main human-readable review body.
@@ -754,7 +652,7 @@ jobs:
           Structural exploration is mandatory for every PR, including dependency-only, lockfile-only, workflow-only, docs-only, and no-source-code changes; inspect the relevant manifest, lockfile, workflow, config, docs, dependency edges, generated side effects, and test-command contracts. Never state that structural exploration, structural analysis, or structural review is not required or unnecessary. If structural exploration was not possible or changed files could not be inspected after reading bounded-review-evidence.md and the changed files, do not approve. If evidence is truncated, inspect focused hunks and changed files directly before deciding. Do not request changes solely because the prompt did not inline the full evidence.
           Use CodeGraph for blast-radius, call graph, and test-coverage questions before broad local reads. Prefer deletion, stdlib/native platform features, and already-installed dependencies before proposing new code or packages, but do not simplify away trust-boundary validation, data-loss handling, security, accessibility, or required tests. For Korean prose, preserve facts, identifiers, numbers, and quotes while removing only formulaic filler or translationese.
           Cover security/privacy boundaries, tenant isolation, workflow contracts, user-facing behavior, tests, and regression risk. Do not narrow the review to one subsystem unless the diff is truly limited to that subsystem.
-          Lead with findings ordered by severity. Distinguish blocking findings from important suggestions and nits. Request changes only for actionable blockers with clear problem, root cause, observable impact, trigger condition, minimal fix direction, and exact regression test or verification command when the repository already provides one. For Greptile-style specificity, include a P1/P2/P3 priority in each actionable finding, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid graph mapping the changed surface to the main risk, fix, and verification path. Use an OpenCode-owned human-readable review structure compatible with Copilot Review's concise pull request overview followed by CodeRabbitAI's severity-ordered actionable finding format; put brief summary context after findings and do not depend on Copilot Review, CodeRabbitAI, or any human reviewer being present.
+          Lead with findings ordered by severity. Distinguish blocking findings from important suggestions and nits. Request changes only for actionable blockers with clear problem, root cause, observable impact, trigger condition, minimal fix direction, and exact regression test or verification command when the repository already provides one. For Greptile-style specificity, include a P1/P2/P3 priority in each actionable finding, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid software-flow graph that names the changed file or surface and maps it to the affected execution path, main risk, and verification path; do not use generic placeholder nodes like Changed surface or Main risk. Use an OpenCode-owned human-readable review structure compatible with Copilot Review's concise pull request overview followed by CodeRabbitAI's severity-ordered actionable finding format; put brief summary context after findings and do not depend on Copilot Review, CodeRabbitAI, or any human reviewer being present.
           If bounded failed GitHub Check evidence contains active failed checks, treat it as a blocker until diagnosed. If every active failed-check block says the job was not started because the GitHub account is locked due to a billing issue, classify it as an external CI/account blocker with no repository source fix; do not invent source-backed REQUEST_CHANGES findings for it. If the evidence says no completed failed GitHub Checks were present, do not request changes solely from that section. A successful same-head manual workflow_dispatch Strix run may supersede a stale failed PR statusCheckRollup Strix context only when failed-check evidence explicitly lists it under Superseded failed checks with the exact target URL; otherwise treat failed rollup contexts as blockers. For Strix or other GitHub Checks, use the failed log excerpt and annotations to identify the exact local file line that must change, then provide a concrete from/to fix and suggested diff. When Strix evidence contains multiple model vulnerability reports, include every model-reported vulnerability as a separate evidence-backed finding, preserving each report's model name, title, severity, endpoint, and Code Locations/path:line evidence when present. When evidence supports it, name the concrete CWE/KISA-style class such as injection, auth/authz, secrets, crypto, path traversal/file upload, XSS/CSRF/SSRF, error disclosure, or debug/deployment config; do not invent a category without evidence. One Strix model vulnerability report requires one distinct finding; do not combine duplicate titles or matching locations from different models into one finding. Do not request changes with only a check URL, workflow name, or generic failure summary.
           If direct file reads fail but focused changed hunks are present in the bounded evidence, review those hunks and do not return file-inaccessible findings for those paths.
           Full failed-check evidence, when collected, is available as failed-check-evidence.md in the isolated review workspace; inspect it before emitting any failed-check or Strix finding.
@@ -882,7 +780,7 @@ jobs:
           Structural exploration is mandatory for every PR, including dependency-only, lockfile-only, workflow-only, docs-only, and no-source-code changes; inspect the relevant manifest, lockfile, workflow, config, docs, dependency edges, generated side effects, and test-command contracts. Never state that structural exploration, structural analysis, or structural review is not required or unnecessary. If structural exploration was not possible or changed files could not be inspected after reading bounded-review-evidence.md and the changed files, do not approve. If evidence is truncated, inspect focused hunks and changed files directly before deciding. Do not request changes solely because the prompt did not inline the full evidence.
           Use CodeGraph for blast-radius, call graph, and test-coverage questions before broad local reads. Prefer deletion, stdlib/native platform features, and already-installed dependencies before proposing new code or packages, but do not simplify away trust-boundary validation, data-loss handling, security, accessibility, or required tests. For Korean prose, preserve facts, identifiers, numbers, and quotes while removing only formulaic filler or translationese.
           Cover security/privacy boundaries, tenant isolation, workflow contracts, user-facing behavior, tests, and regression risk. Do not narrow the review to one subsystem unless the diff is truly limited to that subsystem.
-          Lead with findings ordered by severity. Distinguish blocking findings from important suggestions and nits. Request changes only for actionable blockers with clear problem, root cause, observable impact, trigger condition, minimal fix direction, and exact regression test or verification command when the repository already provides one. For Greptile-style specificity, include a P1/P2/P3 priority in each actionable finding, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid graph mapping the changed surface to the main risk, fix, and verification path. Use an OpenCode-owned human-readable review structure compatible with Copilot Review's concise pull request overview followed by CodeRabbitAI's severity-ordered actionable finding format; put brief summary context after findings and do not depend on Copilot Review, CodeRabbitAI, or any human reviewer being present.
+          Lead with findings ordered by severity. Distinguish blocking findings from important suggestions and nits. Request changes only for actionable blockers with clear problem, root cause, observable impact, trigger condition, minimal fix direction, and exact regression test or verification command when the repository already provides one. For Greptile-style specificity, include a P1/P2/P3 priority in each actionable finding, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid software-flow graph that names the changed file or surface and maps it to the affected execution path, main risk, and verification path; do not use generic placeholder nodes like Changed surface or Main risk. Use an OpenCode-owned human-readable review structure compatible with Copilot Review's concise pull request overview followed by CodeRabbitAI's severity-ordered actionable finding format; put brief summary context after findings and do not depend on Copilot Review, CodeRabbitAI, or any human reviewer being present.
           If bounded failed GitHub Check evidence contains active failed checks, treat it as a blocker until diagnosed. If every active failed-check block says the job was not started because the GitHub account is locked due to a billing issue, classify it as an external CI/account blocker with no repository source fix; do not invent source-backed REQUEST_CHANGES findings for it. If the evidence says no completed failed GitHub Checks were present, do not request changes solely from that section. A successful same-head manual workflow_dispatch Strix run may supersede a stale failed PR statusCheckRollup Strix context only when failed-check evidence explicitly lists it under Superseded failed checks with the exact target URL; otherwise treat failed rollup contexts as blockers. For Strix or other GitHub Checks, use the failed log excerpt and annotations to identify the exact local file line that must change, then provide a concrete from/to fix and suggested diff. When Strix evidence contains multiple model vulnerability reports, include every model-reported vulnerability as a separate evidence-backed finding, preserving each report's model name, title, severity, endpoint, and Code Locations/path:line evidence when present. When evidence supports it, name the concrete CWE/KISA-style class such as injection, auth/authz, secrets, crypto, path traversal/file upload, XSS/CSRF/SSRF, error disclosure, or debug/deployment config; do not invent a category without evidence. One Strix model vulnerability report requires one distinct finding; do not combine duplicate titles or matching locations from different models into one finding. Do not request changes with only a check URL, workflow name, or generic failure summary.
           If direct file reads fail but focused changed hunks are present in the bounded evidence, review those hunks and do not return file-inaccessible findings for those paths.
           Full failed-check evidence, when collected, is available as failed-check-evidence.md in the isolated review workspace; inspect it before emitting any failed-check or Strix finding.
@@ -1010,7 +908,7 @@ jobs:
           Structural exploration is mandatory for every PR, including dependency-only, lockfile-only, workflow-only, docs-only, and no-source-code changes; inspect the relevant manifest, lockfile, workflow, config, docs, dependency edges, generated side effects, and test-command contracts. Never state that structural exploration, structural analysis, or structural review is not required or unnecessary. If structural exploration was not possible or changed files could not be inspected after reading bounded-review-evidence.md and the changed files, do not approve. If evidence is truncated, inspect focused hunks and changed files directly before deciding. Do not request changes solely because the prompt did not inline the full evidence.
           Use CodeGraph for blast-radius, call graph, and test-coverage questions before broad local reads. Prefer deletion, stdlib/native platform features, and already-installed dependencies before proposing new code or packages, but do not simplify away trust-boundary validation, data-loss handling, security, accessibility, or required tests. For Korean prose, preserve facts, identifiers, numbers, and quotes while removing only formulaic filler or translationese.
           Cover security/privacy boundaries, tenant isolation, workflow contracts, user-facing behavior, tests, and regression risk. Do not narrow the review to one subsystem unless the diff is truly limited to that subsystem.
-          Lead with findings ordered by severity. Distinguish blocking findings from important suggestions and nits. Request changes only for actionable blockers with clear problem, root cause, observable impact, trigger condition, minimal fix direction, and exact regression test or verification command when the repository already provides one. For Greptile-style specificity, include a P1/P2/P3 priority in each actionable finding, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid graph mapping the changed surface to the main risk, fix, and verification path. Use an OpenCode-owned human-readable review structure compatible with Copilot Review's concise pull request overview followed by CodeRabbitAI's severity-ordered actionable finding format; put brief summary context after findings and do not depend on Copilot Review, CodeRabbitAI, or any human reviewer being present.
+          Lead with findings ordered by severity. Distinguish blocking findings from important suggestions and nits. Request changes only for actionable blockers with clear problem, root cause, observable impact, trigger condition, minimal fix direction, and exact regression test or verification command when the repository already provides one. For Greptile-style specificity, include a P1/P2/P3 priority in each actionable finding, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid software-flow graph that names the changed file or surface and maps it to the affected execution path, main risk, and verification path; do not use generic placeholder nodes like Changed surface or Main risk. Use an OpenCode-owned human-readable review structure compatible with Copilot Review's concise pull request overview followed by CodeRabbitAI's severity-ordered actionable finding format; put brief summary context after findings and do not depend on Copilot Review, CodeRabbitAI, or any human reviewer being present.
           If bounded failed GitHub Check evidence contains active failed checks, treat it as a blocker until diagnosed. If every active failed-check block says the job was not started because the GitHub account is locked due to a billing issue, classify it as an external CI/account blocker with no repository source fix; do not invent source-backed REQUEST_CHANGES findings for it. If the evidence says no completed failed GitHub Checks were present, do not request changes solely from that section. A successful same-head manual workflow_dispatch Strix run may supersede a stale failed PR statusCheckRollup Strix context only when failed-check evidence explicitly lists it under Superseded failed checks with the exact target URL; otherwise treat failed rollup contexts as blockers. For Strix or other GitHub Checks, use the failed log excerpt and annotations to identify the exact local file line that must change, then provide a concrete from/to fix and suggested diff. When Strix evidence contains multiple model vulnerability reports, include every model-reported vulnerability as a separate evidence-backed finding, preserving each report's model name, title, severity, endpoint, and Code Locations/path:line evidence when present. When evidence supports it, name the concrete CWE/KISA-style class such as injection, auth/authz, secrets, crypto, path traversal/file upload, XSS/CSRF/SSRF, error disclosure, or debug/deployment config; do not invent a category without evidence. One Strix model vulnerability report requires one distinct finding; do not combine duplicate titles or matching locations from different models into one finding. Do not request changes with only a check URL, workflow name, or generic failure summary.
           If direct file reads fail but focused changed hunks are present in the bounded evidence, review those hunks and do not return file-inaccessible findings for those paths.
           Full failed-check evidence, when collected, is available as failed-check-evidence.md in the isolated review workspace; inspect it before emitting any failed-check or Strix finding.
@@ -1104,6 +1002,127 @@ jobs:
           fi
           record_review_status "success"
 
+      - name: Run OpenCode PR Review fallback (OpenAI o-series)
+        id: opencode_review_o_series_fallback
+        if: >-
+          always()
+          && steps.opencode_review_primary.outputs.review_status != 'success'
+          && steps.opencode_review_fallback.outputs.review_status != 'success'
+          && steps.opencode_review_second_fallback.outputs.review_status != 'success'
+        timeout-minutes: 20
+        env:
+          STRIX_GITHUB_MODELS_TOKEN: ${{ secrets.STRIX_GITHUB_MODELS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          USE_GITHUB_TOKEN: "true"
+          SHARE: "false"
+          NPM_CONFIG_IGNORE_SCRIPTS: "true"
+          NO_COLOR: "1"
+          OPENCODE_MODEL_CANDIDATES: "github-models/openai/o3 github-models/openai/o4-mini"
+          OPENCODE_MODEL_ATTEMPTS: "2"
+          OPENCODE_RUN_TIMEOUT_SECONDS: "180"
+          OPENCODE_EVIDENCE_FILE: ${{ runner.temp }}/opencode-review-evidence.md
+          OPENCODE_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-o-series-fallback.md
+          OPENCODE_REVIEW_WORKDIR: ${{ runner.temp }}/opencode-review-project
+          OPENCODE_SOURCE_WORKDIR: ${{ runner.temp }}/opencode-pr-head
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.inputs.pr_base_sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.inputs.pr_head_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.inputs.pr_head_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          record_review_status() {
+            printf 'review_status=%s\n' "$1" >>"$GITHUB_OUTPUT"
+          }
+          record_review_model() {
+            printf 'review_model=%s\n' "$1" >>"$GITHUB_OUTPUT"
+          }
+          normalize_opencode_output() {
+            local output_file="$1"
+
+            if bash "$GITHUB_WORKSPACE/scripts/ci/opencode_review_approve_gate.sh" "$HEAD_SHA" "$RUN_ID" "$RUN_ATTEMPT" "$output_file" >/dev/null; then
+              return 0
+            fi
+
+            if python3 "$GITHUB_WORKSPACE/scripts/ci/opencode_review_normalize_output.py" \
+              "$HEAD_SHA" "$RUN_ID" "$RUN_ATTEMPT" "$output_file"; then
+              bash "$GITHUB_WORKSPACE/scripts/ci/opencode_review_approve_gate.sh" "$HEAD_SHA" "$RUN_ID" "$RUN_ATTEMPT" "$output_file" >/dev/null
+              return $?
+            fi
+
+            return 1
+          }
+
+          cd "$OPENCODE_REVIEW_WORKDIR"
+          opencode_attempts="${OPENCODE_MODEL_ATTEMPTS:-2}"
+          for model_candidate in $OPENCODE_MODEL_CANDIDATES; do
+            candidate_output_file="${RUNNER_TEMP}/opencode-review-${model_candidate//\//-}.md"
+            opencode_json_file="${candidate_output_file}.jsonl"
+            opencode_export_file="${candidate_output_file}.session.json"
+            prompt_file="${RUNNER_TEMP}/opencode-review-${model_candidate//\//-}-prompt.md"
+            cat >"$prompt_file" <<EOF
+          GPT-5, DeepSeek R1, and DeepSeek V3 did not produce a usable review. Review PR #${PR_NUMBER} in ${OPENCODE_SOURCE_WORKDIR} with ${model_candidate}. The trusted workflow checkout is ${GITHUB_WORKSPACE}; inspect the pull request head source only from ${OPENCODE_SOURCE_WORKDIR}.
+          Read ./bounded-review-evidence.md first, then inspect changed files and focused hunks under the PR head worktree. CodeGraph MCP is mandatory for structural checks. Use Context7 for current library/API docs, DeepWiki or repository docs for repo claims, and web search for bounded external lookups such as user-claimed concepts, industry standards, international standards, official platform specifications, and comparable issue or PR precedents when applicable. Do not rely on model memory when a search source is available.
+          Cover security/privacy, performance, developer experience, user experience, tests, coverage, docstring coverage, cross-file compatibility, repository conventions, deployment evidence, git history, breaking-change/backcompat impact, and regression risk. Do not request changes from a failed check URL, workflow name, cancelled metadata-only gate, or generic failure summary alone; REQUEST_CHANGES findings must be line-specific and source-backed.
+          Before APPROVE, the summary must name at least one exact changed file path and include a Verification posture section with these exact labels: Linter/static:, TDD/regression:, Coverage:, Docstring coverage:, DAG:, PoC/execution:, DDD/domain:, CDD/context:, Similar issues:, Claim/concept check:, Standards search:, Compatibility/convention:, Breaking-change/backcompat:, Performance:, Developer experience:, User experience:, Security/privacy:. The CDD/context label must explicitly mention CodeGraph or structural MCP evidence. DAG: must name the rendered Change Flow DAG or an equivalent Mermaid DAG that maps changed files to affected execution path, main risk, and verification path.
+          First line exactly:
+          <!-- opencode-review-gate head_sha=${HEAD_SHA} run_id=${RUN_ID} run_attempt=${RUN_ATTEMPT} -->
+          Then exactly one control block:
+          <!-- opencode-review-control-v1
+          {"head_sha":"${HEAD_SHA}","run_id":"${RUN_ID}","run_attempt":"${RUN_ATTEMPT}","result":"APPROVE or REQUEST_CHANGES","reason":"short reason","summary":"short review summary with concrete evidence and Verification posture labels","findings":[]}
+          -->
+          APPROVE only for no blockers. REQUEST_CHANGES findings require path,line,severity,title,problem,root_cause,fix_direction,regression_test_direction,suggested_diff. Use line-specific, source-backed findings only. Return only the review body.
+          EOF
+
+            for opencode_attempt in $(seq 1 "$opencode_attempts"); do
+              rm -f "$opencode_json_file" "$opencode_export_file" "$candidate_output_file"
+              set +e
+              timeout --kill-after=30s "${OPENCODE_RUN_TIMEOUT_SECONDS:-180}s" opencode run "$(cat "$prompt_file")" \
+                --pure \
+                --agent ci-review-fallback \
+                --model "$model_candidate" \
+                --format json \
+                --title "PR #${PR_NUMBER} OpenCode bounded o-series review ${model_candidate} attempt ${opencode_attempt}/${opencode_attempts}" >"$opencode_json_file"
+              opencode_run_status=$?
+              set -e
+              if [ "$opencode_run_status" -ne 0 ]; then
+                printf 'OpenCode %s fallback attempt %s/%s failed with exit %s.\n' "$model_candidate" "$opencode_attempt" "$opencode_attempts" "$opencode_run_status"
+                if [ "$opencode_attempt" -lt "$opencode_attempts" ]; then
+                  sleep 10
+                fi
+                continue
+              fi
+
+              session_id="$(jq -r 'select(.type == "step_start") | .sessionID' "$opencode_json_file" | tail -n 1)"
+              if [ -z "$session_id" ] || [ "$session_id" = "null" ]; then
+                printf 'OpenCode %s attempt %s/%s JSON output did not include a session id.\n' "$model_candidate" "$opencode_attempt" "$opencode_attempts"
+                continue
+              fi
+              if ! opencode export "$session_id" --pure >"$opencode_export_file"; then
+                printf 'OpenCode %s attempt %s/%s session export did not complete.\n' "$model_candidate" "$opencode_attempt" "$opencode_attempts"
+                continue
+              fi
+              jq -r '.messages[] | select(.info.role == "assistant") | .parts[]? | select(.type == "text") | .text' "$opencode_export_file" >"$candidate_output_file"
+              if [ ! -s "$candidate_output_file" ]; then
+                printf 'OpenCode %s attempt %s/%s session export did not include assistant text.\n' "$model_candidate" "$opencode_attempt" "$opencode_attempts"
+                continue
+              fi
+              if normalize_opencode_output "$candidate_output_file"; then
+                cp "$candidate_output_file" "$OPENCODE_OUTPUT_FILE"
+                record_review_model "$model_candidate"
+                record_review_status "success"
+                exit 0
+              fi
+              printf 'OpenCode %s attempt %s/%s output did not include a valid control conclusion.\n' "$model_candidate" "$opencode_attempt" "$opencode_attempts"
+              if [ "$opencode_attempt" -lt "$opencode_attempts" ]; then
+                sleep 10
+              fi
+            done
+          done
+
+          record_review_status "failed"
+
       - name: Exchange OpenCode app token for review writes
         id: opencode_app_token
         if: always()
@@ -1176,7 +1195,8 @@ jobs:
           always()
           && (steps.opencode_review_primary.outputs.review_status == 'success'
               || steps.opencode_review_fallback.outputs.review_status == 'success'
-              || steps.opencode_review_second_fallback.outputs.review_status == 'success')
+              || steps.opencode_review_second_fallback.outputs.review_status == 'success'
+              || steps.opencode_review_o_series_fallback.outputs.review_status == 'success')
         env:
           GH_TOKEN: ${{ steps.opencode_app_token.outputs.token || secrets.OPENCODE_APPROVE_TOKEN || secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
@@ -1187,9 +1207,11 @@ jobs:
           OPENCODE_PRIMARY_OUTCOME: ${{ steps.opencode_review_primary.outputs.review_status }}
           OPENCODE_FALLBACK_OUTCOME: ${{ steps.opencode_review_fallback.outputs.review_status }}
           OPENCODE_SECOND_FALLBACK_OUTCOME: ${{ steps.opencode_review_second_fallback.outputs.review_status }}
+          OPENCODE_O_SERIES_FALLBACK_OUTCOME: ${{ steps.opencode_review_o_series_fallback.outputs.review_status }}
           OPENCODE_PRIMARY_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-primary.md
           OPENCODE_FALLBACK_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-fallback.md
           OPENCODE_SECOND_FALLBACK_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-second-fallback.md
+          OPENCODE_O_SERIES_FALLBACK_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-o-series-fallback.md
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.inputs.pr_base_sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.inputs.pr_head_sha }}
         run: |
@@ -1199,8 +1221,10 @@ jobs:
             review_output_file="$OPENCODE_PRIMARY_OUTPUT_FILE"
           elif [ "$OPENCODE_FALLBACK_OUTCOME" = "success" ]; then
             review_output_file="$OPENCODE_FALLBACK_OUTPUT_FILE"
-          else
+          elif [ "$OPENCODE_SECOND_FALLBACK_OUTCOME" = "success" ]; then
             review_output_file="$OPENCODE_SECOND_FALLBACK_OUTPUT_FILE"
+          else
+            review_output_file="$OPENCODE_O_SERIES_FALLBACK_OUTPUT_FILE"
           fi
 
           clean_output="$(mktemp)"
@@ -1221,14 +1245,115 @@ jobs:
             fi
           }
 
-          append_mermaid_review_graph() {
-            printf '\n## Risk Graph\n\n'
+          emit_change_flow_mermaid_graph() {
+            local merge_state="${1:-UNKNOWN}"
+            local changed_files_file surfaces_file idx next_node
+
+            mermaid_label() {
+              printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\[/(/g; s/\]/)/g'
+            }
+
+            changed_files_file="$(mktemp)"
+            surfaces_file="$(mktemp)"
+            if ! gh pr diff "$PR_NUMBER" --repo "$GH_REPOSITORY" --name-only >"$changed_files_file" 2>/dev/null ||
+              [ ! -s "$changed_files_file" ]; then
+              : >"$changed_files_file"
+              gh api -X GET "repos/${GH_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate \
+                --jq '.[].filename' >"$changed_files_file" 2>/dev/null || true
+            fi
+            if [ ! -s "$changed_files_file" ]; then
+              printf '```mermaid\n'
+              printf 'flowchart LR\n'
+              printf '  Evidence["OpenCode evidence"] --> Risk["Review risk"]\n'
+              printf '  Risk --> Verify["Required checks"]\n'
+              printf '```\n'
+              rm -f "$changed_files_file" "$surfaces_file"
+              return 0
+            fi
+
+            awk '
+              function basename(path) {
+                sub(/^.*\//, "", path)
+                return path
+              }
+              function add(key, surface, impact, verify, path) {
+                if (!(key in count)) {
+                  keys[++n] = key
+                  label[key] = surface ": " basename(path)
+                  impacts[key] = impact
+                  verifies[key] = verify
+                }
+                count[key]++
+              }
+              /^\.github\/workflows\// {
+                add("workflow", "Workflow", "GitHub Actions review job", "actionlint plus required checks", $0)
+                next
+              }
+              /^scripts\/ci\// {
+                add("ci", "CI script", "review and security gate shell path", "bash -n plus Strix self-test", $0)
+                next
+              }
+              /^backend\// {
+                add("backend", "Backend", "API and service runtime", "backend tests", $0)
+                next
+              }
+              /^frontend\// {
+                add("frontend", "Frontend", "browser runtime and bundle", "frontend tests", $0)
+                next
+              }
+              /^tests?\// || /(^|\/)test_/ {
+                add("tests", "Test", "regression suite", "targeted test run", $0)
+                next
+              }
+              /^docs\// {
+                add("docs", "Docs", "operator or user guidance", "docs review", $0)
+                next
+              }
+              {
+                add("other", "Changed file", "repository behavior", "required checks", $0)
+              }
+              END {
+                for (i = 1; i <= n; i++) {
+                  key = keys[i]
+                  if (count[key] > 1) {
+                    sub(/: .*/, " (" count[key] " files)", label[key])
+                  }
+                  print label[key] "\t" impacts[key] "\t" verifies[key]
+                }
+              }
+            ' "$changed_files_file" >"$surfaces_file"
+
             printf '```mermaid\n'
             printf 'flowchart LR\n'
-            printf '  Change[Changed surface] --> Risk[Main risk]\n'
-            printf '  Risk --> Fix[Smallest fix]\n'
-            printf '  Fix --> Verify[Verification]\n'
+            printf '  PR["PR changed files"] --> Evidence["OpenCode bounded evidence"]\n'
+            idx=1
+            while IFS="$(printf '\t')" read -r surface impact verify; do
+              [ -n "$surface" ] || continue
+              surface_label="$(mermaid_label "$surface")"
+              impact_label="$(mermaid_label "$impact")"
+              verify_label="$(mermaid_label "$verify")"
+              printf '  Evidence --> S%s["%s"]\n' "$idx" "$surface_label"
+              printf '  S%s --> I%s["%s"]\n' "$idx" "$idx" "$impact_label"
+              if [ "$merge_state" = "DIRTY" ] || [ "$merge_state" = "CONFLICTING" ]; then
+                printf '  I%s --> Conflict["Merge conflict blocks this path"]\n' "$idx"
+                next_node="Conflict"
+              else
+                printf '  I%s --> Review["Main review risk"]\n' "$idx"
+                next_node="Review"
+              fi
+              printf '  %s --> V%s["%s"]\n' "$next_node" "$idx" "$verify_label"
+              idx=$((idx + 1))
+            done <"$surfaces_file"
             printf '```\n'
+            rm -f "$changed_files_file" "$surfaces_file"
+          }
+
+          append_mermaid_review_graph() {
+            local pr_json merge_state
+            pr_json="$(gh pr view "$PR_NUMBER" --repo "$GH_REPOSITORY" --json mergeStateStatus 2>/dev/null || true)"
+            merge_state="$(printf '%s' "$pr_json" | jq -r '.mergeStateStatus // "UNKNOWN"' 2>/dev/null || printf 'UNKNOWN')"
+            printf '\n## Change Flow Graph\n\n'
+            emit_change_flow_mermaid_graph "$merge_state"
           }
 
           append_merge_conflict_guidance() {
@@ -1295,7 +1420,9 @@ jobs:
             printf -- '- Workflow attempt: %s\n' "$RUN_ATTEMPT"
             printf -- "- Gate result: \`%s\` (exit %s)\n\n" "${gate_result:-UNKNOWN}" "$gate_status"
             cat "$comment_body_file"
-            append_mermaid_review_graph
+            if ! grep -Fq "## Change Flow Graph" "$comment_body_file"; then
+              append_mermaid_review_graph
+            fi
             append_merge_conflict_guidance
           } >"$overview_body_file"
 
@@ -1342,9 +1469,11 @@ jobs:
           OPENCODE_PRIMARY_OUTCOME: ${{ steps.opencode_review_primary.outputs.review_status }}
           OPENCODE_FALLBACK_OUTCOME: ${{ steps.opencode_review_fallback.outputs.review_status }}
           OPENCODE_SECOND_FALLBACK_OUTCOME: ${{ steps.opencode_review_second_fallback.outputs.review_status }}
+          OPENCODE_O_SERIES_FALLBACK_OUTCOME: ${{ steps.opencode_review_o_series_fallback.outputs.review_status }}
           OPENCODE_PRIMARY_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-primary.md
           OPENCODE_FALLBACK_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-fallback.md
           OPENCODE_SECOND_FALLBACK_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-second-fallback.md
+          OPENCODE_O_SERIES_FALLBACK_OUTPUT_FILE: ${{ runner.temp }}/opencode-review-o-series-fallback.md
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.inputs.pr_base_sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.inputs.pr_head_sha }}
           APPROVAL_CHECK_WAIT_ATTEMPTS: "241"
@@ -1371,14 +1500,115 @@ jobs:
             fi
           }
 
-          append_mermaid_review_graph() {
-            printf '\n## Risk Graph\n\n'
+          emit_change_flow_mermaid_graph() {
+            local merge_state="${1:-UNKNOWN}"
+            local changed_files_file surfaces_file idx next_node
+
+            mermaid_label() {
+              printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\[/(/g; s/\]/)/g'
+            }
+
+            changed_files_file="$(mktemp)"
+            surfaces_file="$(mktemp)"
+            if ! gh pr diff "$PR_NUMBER" --repo "$GH_REPOSITORY" --name-only >"$changed_files_file" 2>/dev/null ||
+              [ ! -s "$changed_files_file" ]; then
+              : >"$changed_files_file"
+              gh api -X GET "repos/${GH_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate \
+                --jq '.[].filename' >"$changed_files_file" 2>/dev/null || true
+            fi
+            if [ ! -s "$changed_files_file" ]; then
+              printf '```mermaid\n'
+              printf 'flowchart LR\n'
+              printf '  Evidence["OpenCode evidence"] --> Risk["Review risk"]\n'
+              printf '  Risk --> Verify["Required checks"]\n'
+              printf '```\n'
+              rm -f "$changed_files_file" "$surfaces_file"
+              return 0
+            fi
+
+            awk '
+              function basename(path) {
+                sub(/^.*\//, "", path)
+                return path
+              }
+              function add(key, surface, impact, verify, path) {
+                if (!(key in count)) {
+                  keys[++n] = key
+                  label[key] = surface ": " basename(path)
+                  impacts[key] = impact
+                  verifies[key] = verify
+                }
+                count[key]++
+              }
+              /^\.github\/workflows\// {
+                add("workflow", "Workflow", "GitHub Actions review job", "actionlint plus required checks", $0)
+                next
+              }
+              /^scripts\/ci\// {
+                add("ci", "CI script", "review and security gate shell path", "bash -n plus Strix self-test", $0)
+                next
+              }
+              /^backend\// {
+                add("backend", "Backend", "API and service runtime", "backend tests", $0)
+                next
+              }
+              /^frontend\// {
+                add("frontend", "Frontend", "browser runtime and bundle", "frontend tests", $0)
+                next
+              }
+              /^tests?\// || /(^|\/)test_/ {
+                add("tests", "Test", "regression suite", "targeted test run", $0)
+                next
+              }
+              /^docs\// {
+                add("docs", "Docs", "operator or user guidance", "docs review", $0)
+                next
+              }
+              {
+                add("other", "Changed file", "repository behavior", "required checks", $0)
+              }
+              END {
+                for (i = 1; i <= n; i++) {
+                  key = keys[i]
+                  if (count[key] > 1) {
+                    sub(/: .*/, " (" count[key] " files)", label[key])
+                  }
+                  print label[key] "\t" impacts[key] "\t" verifies[key]
+                }
+              }
+            ' "$changed_files_file" >"$surfaces_file"
+
             printf '```mermaid\n'
             printf 'flowchart LR\n'
-            printf '  Change[Changed surface] --> Risk[Main risk]\n'
-            printf '  Risk --> Fix[Smallest fix]\n'
-            printf '  Fix --> Verify[Verification]\n'
+            printf '  PR["PR changed files"] --> Evidence["OpenCode bounded evidence"]\n'
+            idx=1
+            while IFS="$(printf '\t')" read -r surface impact verify; do
+              [ -n "$surface" ] || continue
+              surface_label="$(mermaid_label "$surface")"
+              impact_label="$(mermaid_label "$impact")"
+              verify_label="$(mermaid_label "$verify")"
+              printf '  Evidence --> S%s["%s"]\n' "$idx" "$surface_label"
+              printf '  S%s --> I%s["%s"]\n' "$idx" "$idx" "$impact_label"
+              if [ "$merge_state" = "DIRTY" ] || [ "$merge_state" = "CONFLICTING" ]; then
+                printf '  I%s --> Conflict["Merge conflict blocks this path"]\n' "$idx"
+                next_node="Conflict"
+              else
+                printf '  I%s --> Review["Main review risk"]\n' "$idx"
+                next_node="Review"
+              fi
+              printf '  %s --> V%s["%s"]\n' "$next_node" "$idx" "$verify_label"
+              idx=$((idx + 1))
+            done <"$surfaces_file"
             printf '```\n'
+            rm -f "$changed_files_file" "$surfaces_file"
+          }
+
+          append_mermaid_review_graph() {
+            local pr_json merge_state
+            pr_json="$(gh pr view "$PR_NUMBER" --repo "$GH_REPOSITORY" --json mergeStateStatus 2>/dev/null || true)"
+            merge_state="$(printf '%s' "$pr_json" | jq -r '.mergeStateStatus // "UNKNOWN"' 2>/dev/null || printf 'UNKNOWN')"
+            printf '\n## Change Flow Graph\n\n'
+            emit_change_flow_mermaid_graph "$merge_state"
           }
 
           append_merge_conflict_guidance() {
@@ -1400,6 +1630,15 @@ jobs:
             printf '%s\n' "- Fix direction: merge or rebase \`origin/${base_ref}\` into \`${head_ref}\`, resolve conflict markers in the changed files, rerun the focused checks, then push the same branch."
           }
 
+          ensure_review_body_has_change_graph() {
+            local body="$1"
+
+            printf '%s\n' "$body"
+            if ! printf '%s\n' "$body" | grep -Fq "## Change Flow Graph"; then
+              append_mermaid_review_graph
+            fi
+          }
+
           update_review_overview() {
             local result="$1" body="$2"
             local gh_error_file
@@ -1416,7 +1655,9 @@ jobs:
               printf -- '- Workflow attempt: %s\n' "$RUN_ATTEMPT"
               printf -- "- Gate result: \`%s\` (approval step)\n\n" "$result"
               printf '%s\n' "$body"
-              append_mermaid_review_graph
+              if ! printf '%s\n' "$body" | grep -Fq "## Change Flow Graph"; then
+                append_mermaid_review_graph
+              fi
               append_merge_conflict_guidance
             } >"$overview_body_file"
 
@@ -1452,6 +1693,7 @@ jobs:
             local event="$1" body="$2"
             local gh_error_file
             local review_payload_file
+            body="$(ensure_review_body_has_change_graph "$body")"
             gh_error_file="$(mktemp)"
             review_payload_file="$(mktemp)"
             jq -n \
@@ -1618,10 +1860,14 @@ jobs:
           create_pull_review_with_payload() {
             local event="$1" body="$2" review_payload_file="$3" fallback_body_file="$4"
             local gh_error_file
+            local review_payload_with_graph_file
+            body="$(ensure_review_body_has_change_graph "$body")"
             gh_error_file="$(mktemp)"
-            if ! gh api -X POST "repos/${GH_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --input "$review_payload_file" >/dev/null 2>"$gh_error_file"; then
+            review_payload_with_graph_file="$(mktemp)"
+            jq --arg body "$body" '.body = $body' "$review_payload_file" >"$review_payload_with_graph_file"
+            if ! gh api -X POST "repos/${GH_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --input "$review_payload_with_graph_file" >/dev/null 2>"$gh_error_file"; then
               warn_gh_publication_failure "pull review inline comments" "$gh_error_file"
-              rm -f "$gh_error_file"
+              rm -f "$gh_error_file" "$review_payload_with_graph_file"
               if [ -s "$fallback_body_file" ]; then
                 update_review_overview "INLINE_COMMENT_PUBLISH_FAILED" "$(cat "$fallback_body_file")"
               else
@@ -1629,7 +1875,7 @@ jobs:
               fi
               return 1
             fi
-            rm -f "$gh_error_file"
+            rm -f "$gh_error_file" "$review_payload_with_graph_file"
             update_review_overview "$event" "$body"
           }
 
@@ -1769,10 +2015,21 @@ jobs:
             local strix_evidence_file
 
             if [ -x "${repo_root%/}/scripts/ci/emit_opencode_failed_check_fallback_findings.sh" ]; then
-              if "${repo_root%/}/scripts/ci/emit_opencode_failed_check_fallback_findings.sh" "$evidence_file" "$repo_root"; then
+              local helper_findings_file
+              helper_findings_file="$(mktemp)"
+              if "${repo_root%/}/scripts/ci/emit_opencode_failed_check_fallback_findings.sh" "$evidence_file" "$repo_root" >"$helper_findings_file"; then
+                if ! grep -Eq '^### [0-9]+\. ' "$helper_findings_file"; then
+                  printf 'OpenCode failed-check fallback helper returned non-source-backed generic output; leaving the PR review unchanged for rerun.\n' >&2
+                  rm -f "$helper_findings_file"
+                  return 1
+                fi
+                cat "$helper_findings_file"
+                rm -f "$helper_findings_file"
                 return 0
               fi
-              printf 'OpenCode failed-check fallback helper exited non-zero; using inline fallback.\n' >&2
+              rm -f "$helper_findings_file"
+              printf 'OpenCode failed-check fallback helper did not produce source-backed findings; leaving the PR review unchanged for rerun.\n' >&2
+              return 1
             fi
 
             extract_strix_failed_check_block() {
@@ -1939,7 +2196,8 @@ jobs:
             rm -f "$strix_evidence_file"
 
             if [ "$finding_index" -eq 0 ]; then
-              printf 'No deterministic missing-string markers were recognized. Use the failed-check evidence below to map each failed check to exact local source lines before approving.\n\n'
+              printf 'No automated source-backed fallback pattern matched this failed check; leaving the PR review unchanged for rerun.\n' >&2
+              return 1
             fi
           }
 
@@ -1947,12 +2205,19 @@ jobs:
             local failed_checks_file="$1"
             local evidence_file="$2"
             local body_file="$3"
+            local findings_file
+
+            findings_file="$(mktemp)"
+            if ! emit_line_specific_fallback_findings "$evidence_file" >"$findings_file"; then
+              rm -f "$findings_file"
+              return 1
+            fi
 
             {
               printf '## Pull request overview\n\n'
-              printf 'OpenCode reviewed the current-head bounded evidence and found failing GitHub Checks that need source-backed diagnosis before merge.\n\n'
+              printf 'OpenCode reviewed the current-head bounded evidence and found source-backed failed-check findings that must be addressed before merge.\n\n'
               printf -- '- Result: REQUEST_CHANGES\n'
-              printf -- "- Reason: one or more GitHub Checks failed on current head \`%s\`.\n" "$HEAD_SHA"
+              printf -- "- Reason: failed current-head checks were mapped to line-specific findings below for \`%s\`.\n" "$HEAD_SHA"
               printf -- "- Head SHA: \`%s\`\n" "$HEAD_SHA"
               printf -- '- Workflow run: %s\n' "$RUN_ID"
               printf -- '- Workflow attempt: %s\n\n' "$RUN_ATTEMPT"
@@ -1960,7 +2225,7 @@ jobs:
               cat "$failed_checks_file"
               printf '\n</details>\n\n'
               printf '## Findings\n\n'
-              emit_line_specific_fallback_findings "$evidence_file"
+              cat "$findings_file"
               printf '<details>\n<summary>Failed check evidence for line-specific fixes</summary>\n\n'
               if [ -s "$evidence_file" ]; then
                 sed -n '1,900p' "$evidence_file"
@@ -1969,6 +2234,7 @@ jobs:
               fi
               printf '\n</details>\n'
             } >"$body_file"
+            rm -f "$findings_file"
           }
 
           is_github_billing_lock_evidence() {
@@ -2109,7 +2375,7 @@ jobs:
 
             {
               printf 'GitHub Checks failed after the initial OpenCode review. Diagnose the failed checks and return a line-specific REQUEST_CHANGES review for PR #%s in %s.\n' "$PR_NUMBER" "$GITHUB_WORKSPACE"
-              printf 'Use the failed log excerpt and annotations below as evidence, then inspect local source files and focused hunks to identify the exact line to edit. For each actionable Strix or GitHub Check failure, provide one finding with path,line,severity,title,problem,root_cause,fix_direction,regression_test_direction,suggested_diff. If PR mergeability evidence reports mergeStateStatus DIRTY, include merge-conflict repair direction that names base/head branches, tells the author to merge or rebase the latest base branch into the PR branch, resolve conflict markers, rerun focused checks, and push the same branch. Use Greptile-style specificity: preserve a P1/P2/P3 priority, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid graph mapping the changed surface to the main risk, fix, and verification path. The line must be a positive line number from an actual changed or relevant local file; never use line 0. Include the failed check label and exact failed log phrase in problem or root_cause; unrelated speculative findings are invalid. Prefer deletion, stdlib/native platform features, and already-installed dependencies before proposing new code or packages, but do not simplify away trust-boundary validation, data-loss handling, security, accessibility, or required tests. The fix_direction must state the concrete from/to change, not only the workflow URL. The suggested_diff must be source-backed and GitHub suggestion-ready when possible: every removed line in the diff must exist in the cited current local file, so do not request changes for code you did not verify in the current source. If Strix evidence contains multiple model vulnerability reports, include every model-reported vulnerability as a separate evidence-backed finding and preserve each report'\''s model name, title, severity, endpoint, and Code Locations/path:line evidence in problem or root_cause when present. When evidence supports it, name the concrete CWE/KISA-style class such as injection, auth/authz, secrets, crypto, path traversal/file upload, XSS/CSRF/SSRF, error disclosure, or debug/deployment config; do not invent a category without evidence. One Strix model vulnerability report requires one distinct finding; do not combine duplicate titles or matching locations from different models into one finding. If a failure is external infrastructure with no source fix, the finding must identify the exact external blocker, supporting log line, and why no repository line can fix it.\n\n'
+              printf 'Use the failed log excerpt and annotations below as evidence, then inspect local source files and focused hunks to identify the exact line to edit. For each actionable Strix or GitHub Check failure, provide one finding with path,line,severity,title,problem,root_cause,fix_direction,regression_test_direction,suggested_diff. If PR mergeability evidence reports mergeStateStatus DIRTY, include merge-conflict repair direction that names base/head branches, tells the author to merge or rebase the latest base branch into the PR branch, resolve conflict markers, rerun focused checks, and push the same branch. Use Greptile-style specificity: preserve a P1/P2/P3 priority, cite the evidence type behind the claim (nearby implementation, matching existing example, cross-file counterpart, current official docs, or failed check/log evidence), flag unrelated PR scope drift, make suggested diffs GitHub suggestion-ready minimal diffs when possible, and include one compact Mermaid software-flow graph that names the changed file or surface and maps it to the affected execution path, main risk, and verification path; do not use generic placeholder nodes like Changed surface or Main risk. The line must be a positive line number from an actual changed or relevant local file; never use line 0. Include the failed check label and exact failed log phrase in problem or root_cause; unrelated speculative findings are invalid. Prefer deletion, stdlib/native platform features, and already-installed dependencies before proposing new code or packages, but do not simplify away trust-boundary validation, data-loss handling, security, accessibility, or required tests. The fix_direction must state the concrete from/to change, not only the workflow URL. The suggested_diff must be source-backed and GitHub suggestion-ready when possible: every removed line in the diff must exist in the cited current local file, so do not request changes for code you did not verify in the current source. If Strix evidence contains multiple model vulnerability reports, include every model-reported vulnerability as a separate evidence-backed finding and preserve each report'\''s model name, title, severity, endpoint, and Code Locations/path:line evidence in problem or root_cause when present. When evidence supports it, name the concrete CWE/KISA-style class such as injection, auth/authz, secrets, crypto, path traversal/file upload, XSS/CSRF/SSRF, error disclosure, or debug/deployment config; do not invent a category without evidence. One Strix model vulnerability report requires one distinct finding; do not combine duplicate titles or matching locations from different models into one finding. If a failure is external infrastructure with no source fix, the finding must identify the exact external blocker, supporting log line, and why no repository line can fix it.\n\n'
               printf 'Format the human-readable review with OpenCode-owned sections compatible with Copilot Review and CodeRabbitAI: start with a concise pull request overview, then list severity-ordered actionable findings without raw tool logs. Do not depend on those agents or a human reviewer being present.\n\n'
               printf 'Failed checks:\n'
               cat "$failed_checks_file"
@@ -2192,7 +2458,7 @@ jobs:
               --workflow strix.yml \
               --commit "$HEAD_SHA" \
               --limit 200 \
-              --json databaseId,workflowName,status,conclusion,url,event,headSha >"$runs_json"; then
+              --json databaseId,workflowName,status,conclusion,url,event,headSha,createdAt >"$runs_json"; then
               rm -f "$runs_json"
               return 1
             fi
@@ -2223,6 +2489,7 @@ jobs:
                 ' "$runs_json" >"$output_file"
                 ;;
               pending)
+                pending_candidates_file="$(mktemp)"
                 jq -r --arg head_sha "$HEAD_SHA" '
                   (. // []) as $runs
                   | ([
@@ -2239,10 +2506,41 @@ jobs:
                       | select((.event // "") == "pull_request_target" or (.event // "") == "workflow_dispatch")
                       | select((.status // "") != "completed")
                       | select((.databaseId // .id // 0) > $newest_success_run_id)
-                      | "- Strix Security Scan/strix workflow run: " + (.status // "unknown") + (if (.url // .html_url // "") != "" then " (" + (.url // .html_url) + ")" else "" end)
+                      | [
+                          ((.databaseId // .id // 0) | tostring),
+                          (.status // "unknown"),
+                          (.createdAt // .created_at // ""),
+                          ("- Strix Security Scan/strix workflow run: " + (.status // "unknown") + (if (.url // .html_url // "") != "" then " (" + (.url // .html_url) + ")" else "" end))
+                        ]
+                      | @tsv
                     )
                   | .[]
-                ' "$runs_json" >"$output_file"
+                ' "$runs_json" >"$pending_candidates_file"
+
+                : >"$output_file"
+                while IFS=$'\t' read -r run_id run_status run_created_at pending_line; do
+                  if [ -z "$run_id" ]; then
+                    continue
+                  fi
+
+                  jobs_total=""
+                  if jobs_total="$(gh api -X GET "repos/${GH_REPOSITORY}/actions/runs/${run_id}/jobs" --jq '.total_count // 0' 2>/dev/null)"; then
+                    no_job_grace_seconds="${STRIX_PENDING_NO_JOB_GRACE_SECONDS:-120}"
+                    run_created_epoch=0
+                    now_epoch="$(date -u +%s)"
+                    if [ -n "$run_created_at" ]; then
+                      run_created_epoch="$(date -u -d "$run_created_at" +%s 2>/dev/null || printf '0')"
+                    fi
+                    run_age_seconds=$((now_epoch - run_created_epoch))
+                    if [ "${jobs_total:-0}" -eq 0 ] && [ "$run_age_seconds" -ge "$no_job_grace_seconds" ]; then
+                      printf 'Ignoring no-job pending Strix workflow run %s after %ss grace period.\n' "$run_id" "$no_job_grace_seconds" >&2
+                      continue
+                    fi
+                  fi
+
+                  printf '%s\n' "$pending_line" >>"$output_file"
+                done <"$pending_candidates_file"
+                rm -f "$pending_candidates_file"
                 ;;
               *)
                 rm -f "$runs_json"
@@ -2333,10 +2631,14 @@ jobs:
                 | map(
                     if .__typename == "CheckRun" then
                       select((.status // "") == "COMPLETED")
+                      | select((.name // "") != "opencode-review")
+                      | select((.checkSuite.workflowRun.workflow.name // "") != "OpenCode Review")
                       | select((.conclusion // "" | ascii_upcase) as $c | ["FAILURE","TIMED_OUT","ACTION_REQUIRED","CANCELLED","STARTUP_FAILURE"] | index($c))
+                      | select(((.conclusion // "" | ascii_downcase) == "cancelled" and (.name // "") == "metadata-only gate evaluation" and (.checkSuite.workflowRun.workflow.name // "") == "PR Governance") | not)
                       | "- " + ((.checkSuite.workflowRun.workflow.name // "") + "/" + (.name // "check") | gsub("^/"; "")) + ": " + (.conclusion // "unknown") + (if (.detailsUrl // "") != "" then " (" + .detailsUrl + ")" else "" end)
                     elif .__typename == "StatusContext" then
-                      select((.state // "" | ascii_upcase) as $s | ["FAILURE","ERROR"] | index($s))
+                      select(((.context // "") | ascii_downcase | contains("opencode-review")) | not)
+                      | select((.state // "" | ascii_upcase) as $s | ["FAILURE","ERROR"] | index($s))
                       | "- " + (.context // "status") + ": " + (.state // "unknown") + (if (.targetUrl // "") != "" then " (" + .targetUrl + ")" else "" end)
                     else
                       empty
@@ -2490,7 +2792,7 @@ jobs:
           }
 
           request_changes_for_merge_conflict_if_present() {
-            local pr_json merge_state mergeable base_ref head_ref body
+            local pr_json merge_state mergeable base_ref head_ref body change_graph
 
             if ! pr_json="$(gh pr view "$PR_NUMBER" --repo "$GH_REPOSITORY" --json baseRefName,headRefName,mergeStateStatus,mergeable 2>/dev/null)"; then
               return 1
@@ -2505,27 +2807,23 @@ jobs:
             base_ref="$(printf '%s\n' "$pr_json" | jq -r '.baseRefName // "unknown"')"
             head_ref="$(printf '%s\n' "$pr_json" | jq -r '.headRefName // "unknown"')"
             mergeable="$(printf '%s\n' "$pr_json" | jq -r '(.mergeable // "unknown") | tostring')"
+            change_graph="$(emit_change_flow_mermaid_graph "$merge_state")"
             body="$(printf '%s\n' \
               "## Pull request overview" \
               "" \
-              "OpenCode reviewed the current-head mergeability evidence and found merge conflicts before approval." \
+              "OpenCode reviewed the current-head mergeability evidence and changed-file flow before approval, then found merge conflicts on the affected path." \
               "" \
               "## Findings" \
               "" \
               "### 1. HIGH Merge Conflict Guidance - Resolve the PR branch against the latest base branch" \
               "- Problem: GitHub reports mergeStateStatus \`${merge_state}\` for this pull request." \
-              "- Root cause: Branch \`${head_ref}\` cannot be merged cleanly into \`${base_ref}\` without resolving conflicting edits." \
+              "- Root cause: Branch \`${head_ref}\` cannot be merged cleanly into \`${base_ref}\`; the changed-file flow below shows which review/runtime path is blocked by the conflict." \
               "- Fix: Merge or rebase the latest \`${base_ref}\` into \`${head_ref}\`, resolve conflict markers in the PR branch, rerun the focused checks, and push the same branch." \
               "- Regression test: Keep OpenCode approval gated on mergeability so model-output failures cannot approve a conflicted PR." \
               "" \
-              "\`\`\`mermaid" \
-              "flowchart LR" \
-              "  base[Base branch latest] --> sync[Merge or rebase base into PR branch]" \
-              "  head[PR branch] --> sync" \
-              "  sync --> resolve[Resolve conflict markers]" \
-              "  resolve --> verify[Rerun focused checks]" \
-              "  verify --> push[Push the same branch]" \
-              "\`\`\`" \
+              "## Change Flow Graph" \
+              "" \
+              "$change_graph" \
               "" \
               "- Result: REQUEST_CHANGES" \
               "- Reason: mergeStateStatus is \`${merge_state}\`; mergeable is \`${mergeable}\`." \
@@ -2616,7 +2914,8 @@ jobs:
             local validation_status=0
             local source_root="${OPENCODE_SOURCE_WORKDIR:-}"
 
-            if [ -z "$source_root" ] || [ ! -d "$source_root/.git" ]; then
+            if [ -z "$source_root" ] || ! git -C "$source_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+              printf 'Review-tooling bootstrap fallback skipped: PR-head source worktree is unavailable at %s.\n' "${source_root:-<empty>}" >&2
               return 1
             fi
 
@@ -2624,10 +2923,12 @@ jobs:
             validation_log="$(mktemp)"
             if ! gh api -X GET "repos/${GH_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate \
               --jq '.[].filename' >"$changed_files_file"; then
+              printf 'Review-tooling bootstrap fallback skipped: changed file list could not be read from GitHub.\n' >&2
               rm -f "$changed_files_file" "$validation_log"
               return 1
             fi
             if [ ! -s "$changed_files_file" ]; then
+              printf 'Review-tooling bootstrap fallback skipped: changed file list is empty.\n' >&2
               rm -f "$changed_files_file" "$validation_log"
               return 1
             fi
@@ -2635,6 +2936,8 @@ jobs:
             if ! awk '
               function allowed(path) {
                 return path == ".github/workflows/opencode-review.yml" ||
+                  path == ".github/workflows/pr-governance.yml" ||
+                  path == ".github/workflows/pr-review-merge-scheduler.yml" ||
                   path == ".github/workflows/strix.yml" ||
                   path == "requirements-strix-ci.txt" ||
                   path == "requirements-strix-ci-hashes.txt" ||
@@ -2642,6 +2945,7 @@ jobs:
                   path == "scripts/ci/emit_opencode_failed_check_fallback_findings.sh" ||
                   path == "scripts/ci/opencode_review_approve_gate.sh" ||
                   path == "scripts/ci/opencode_review_normalize_output.py" ||
+                  path == "scripts/ci/pr_review_merge_scheduler.py" ||
                   path == "scripts/ci/strix_model_utils.sh" ||
                   path == "scripts/ci/strix_quick_gate.sh" ||
                   path == "scripts/ci/test_strix_quick_gate.sh" ||
@@ -2653,6 +2957,8 @@ jobs:
                 }
               }
             ' "$changed_files_file"; then
+              printf 'Review-tooling bootstrap fallback skipped: changed files include paths outside the review-tooling bootstrap allowlist:\n' >&2
+              sed 's/^/- /' "$changed_files_file" >&2 || true
               rm -f "$changed_files_file" "$validation_log"
               return 1
             fi
@@ -2662,7 +2968,7 @@ jobs:
               cd "$source_root"
               if command -v actionlint >/dev/null 2>&1; then
                 workflow_files=()
-                for workflow_file in .github/workflows/opencode-review.yml .github/workflows/strix.yml; do
+                for workflow_file in .github/workflows/opencode-review.yml .github/workflows/pr-governance.yml .github/workflows/pr-review-merge-scheduler.yml .github/workflows/strix.yml; do
                   if [ -f "$workflow_file" ]; then
                     workflow_files+=("$workflow_file")
                   fi
@@ -2692,10 +2998,15 @@ jobs:
               if [ -f scripts/ci/opencode_review_normalize_output.py ]; then
                 python3 -m py_compile scripts/ci/opencode_review_normalize_output.py
               fi
+              if [ -f scripts/ci/pr_review_merge_scheduler.py ]; then
+                python3 -m py_compile scripts/ci/pr_review_merge_scheduler.py
+              fi
             ) >"$validation_log" 2>&1
             validation_status=$?
             set -e
             if [ "$validation_status" -ne 0 ]; then
+              printf 'Review-tooling bootstrap fallback skipped: static validation failed:\n' >&2
+              sed -n '1,120p' "$validation_log" >&2 || true
               rm -f "$changed_files_file" "$validation_log"
               return 1
             fi
@@ -2771,9 +3082,12 @@ jobs:
 
               if run_failed_check_diagnosis "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"; then
                 create_pull_review_with_payload "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"
-              else
-                build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"
+              elif build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"; then
                 create_pull_review "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")"
+              else
+                echo "::error::Failed GitHub Checks were present, but OpenCode could not derive source-backed line-specific findings after retries. Leaving the PR review unchanged so the current-head review can be rerun with better evidence."
+                echo "::endgroup::"
+                exit 1
               fi
               echo "::endgroup::"
               exit 0
@@ -2805,7 +3119,7 @@ jobs:
               elif approve_low_risk_changed_files_after_model_failure "$failed_check_review_body_file"; then
                 create_pull_review "APPROVE" "$(cat "$failed_check_review_body_file")"
               else
-                echo "::error::OpenCode action outcomes were primary=${OPENCODE_PRIMARY_OUTCOME:-unknown}, fallback=${OPENCODE_FALLBACK_OUTCOME:-unknown}, second_fallback=${OPENCODE_SECOND_FALLBACK_OUTCOME:-unknown}; OpenCode model attempts did not produce a usable control block, and deterministic fallback approval did not apply for head ${HEAD_SHA}. Leaving the PR review unchanged because this is review tooling instability, not a source-code finding."
+                echo "::error::OpenCode action outcomes were primary=${OPENCODE_PRIMARY_OUTCOME:-unknown}, fallback=${OPENCODE_FALLBACK_OUTCOME:-unknown}, second_fallback=${OPENCODE_SECOND_FALLBACK_OUTCOME:-unknown}, o_series=${OPENCODE_O_SERIES_FALLBACK_OUTCOME:-unknown}; OpenCode model attempts did not produce a usable control block, and deterministic fallback approval did not apply for head ${HEAD_SHA}. Leaving the PR review unchanged because this is review tooling instability, not a source-code finding."
                 echo "::endgroup::"
                 exit 1
               fi
@@ -2821,6 +3135,8 @@ jobs:
             selected_review_output_file="${OPENCODE_FALLBACK_OUTPUT_FILE}"
           elif [ "${OPENCODE_SECOND_FALLBACK_OUTCOME:-}" = "success" ]; then
             selected_review_output_file="${OPENCODE_SECOND_FALLBACK_OUTPUT_FILE}"
+          elif [ "${OPENCODE_O_SERIES_FALLBACK_OUTCOME:-}" = "success" ]; then
+            selected_review_output_file="${OPENCODE_O_SERIES_FALLBACK_OUTPUT_FILE}"
           fi
 
           load_selected_review_output() {
@@ -2975,11 +3291,14 @@ jobs:
                   create_pull_review_with_payload "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"
                   echo "::endgroup::"
                   exit 0
-                else
-                  build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"
+                elif build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"; then
                   create_pull_review "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")"
                   echo "::endgroup::"
                   exit 0
+                else
+                  echo "::error::Failed GitHub Checks were present, but OpenCode could not derive source-backed line-specific findings after retries. Leaving the PR review unchanged so the current-head review can be rerun with better evidence."
+                  echo "::endgroup::"
+                  exit 1
                 fi
               fi
               unresolved_human_threads_file="$(mktemp)"
@@ -3042,9 +3361,12 @@ jobs:
                   publish_request_changes_from_control "$control_json"
                 elif run_failed_check_diagnosis "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"; then
                   create_pull_review_with_payload "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"
-                else
-                  build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"
+                elif build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"; then
                   create_pull_review "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")"
+                else
+                  echo "::error::Failed GitHub Checks were present, but OpenCode could not derive source-backed line-specific findings after retries. Leaving the PR review unchanged so the current-head review can be rerun with better evidence."
+                  echo "::endgroup::"
+                  exit 1
                 fi
               else
                 publish_request_changes_from_control "$control_json"
@@ -3072,9 +3394,12 @@ jobs:
                 fi
                 if run_failed_check_diagnosis "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"; then
                   create_pull_review_with_payload "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")" "$failed_check_review_payload_file" "$failed_check_inline_failure_body_file"
-                else
-                  build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"
+                elif build_failed_check_fallback_body "$failed_checks_file" "$failed_check_evidence_file" "$failed_check_review_body_file"; then
                   create_pull_review "REQUEST_CHANGES" "$(cat "$failed_check_review_body_file")"
+                else
+                  echo "::error::Failed GitHub Checks were present, but OpenCode could not derive source-backed line-specific findings after retries. Leaving the PR review unchanged so the current-head review can be rerun with better evidence."
+                  echo "::endgroup::"
+                  exit 1
                 fi
               else
                 pending_checks_file="$(mktemp)"

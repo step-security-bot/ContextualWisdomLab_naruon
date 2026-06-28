@@ -47,15 +47,6 @@ def thread_group_key():
     return func.coalesce(normalized_thread_id, normalized_message_id)
 
 
-def email_owner_filters(user_id: str, organization_id: str | None):
-    organization_filter = (
-        Email.organization_id == organization_id
-        if organization_id is not None
-        else Email.organization_id.is_(None)
-    )
-    return (Email.user_id == user_id, organization_filter)
-
-
 def build_reply_counts_subquery(
     user_id: str | None = None, organization_id: str | None = None
 ):
@@ -65,7 +56,7 @@ def build_reply_counts_subquery(
         func.count(Email.id).label("reply_count"),
     ).select_from(Email)
     if user_id is not None:
-        statement = statement.where(*email_owner_filters(user_id, organization_id))
+        statement = statement.where(*Email.owner_filters(user_id, organization_id))
     return statement.group_by(group_key).subquery("thread_counts")
 
 
@@ -211,7 +202,7 @@ async def hybrid_search(
         except EmbeddingGenerationError:
             logger.info("Search embedding unavailable; using full-text search only")
 
-        owner_filters = email_owner_filters(
+        owner_filters = Email.owner_filters(
             target_user_id, auth_context.organization_id
         )
         reply_counts = build_reply_counts_subquery(

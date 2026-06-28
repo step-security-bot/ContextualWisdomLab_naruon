@@ -115,7 +115,7 @@ describe("WorkspaceHome Today dashboard", () => {
                 subject: "벤더 계약 답변 요청",
                 sender: "Seongho <user@naruon.ai>",
                 date: "2026-05-17T09:00:00Z",
-                snippet: "계약 검토 회신 SLA가 지나 작업 보드와 연결해야 합니다.",
+                snippet: "계약 검토 회신 기한이 지나 작업 보드와 연결해야 합니다.",
                 requires_reply: true,
               },
             ],
@@ -161,7 +161,7 @@ describe("WorkspaceHome Today dashboard", () => {
     await waitForCondition(() => container?.textContent?.includes("벤더 계약 답변 요청") ?? false);
 
     expect(container.textContent).toContain("답변 대기 메일");
-    expect(container.textContent).toContain("계약 검토 회신 SLA");
+    expect(container.textContent).toContain("계약 검토 회신 기한");
     const pendingCall = fetchCalls.find((call) => call.url.endsWith("/api/emails/pending-replies?limit=3"));
     expect(pendingCall).toBeDefined();
     expect(pendingCall?.init?.credentials).toBe("same-origin");
@@ -172,7 +172,7 @@ describe("WorkspaceHome Today dashboard", () => {
     expect(headers["X-Dev-Auth-Token"]).toBeUndefined();
   });
 
-  it("creates reply SLA ticket escalation from the Today dashboard with signed headers", async () => {
+  it("creates overdue reply follow-up tasks from the Today dashboard with signed headers", async () => {
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
       matches: false,
       media: query,
@@ -212,7 +212,7 @@ describe("WorkspaceHome Today dashboard", () => {
                 subject: "벤더 계약 답변 요청",
                 sender: "Seongho <user@naruon.ai>",
                 date: "2026-05-17T09:00:00Z",
-                snippet: "계약 검토 회신 SLA가 지나 작업 보드와 연결해야 합니다.",
+                snippet: "계약 검토 회신 기한이 지나 작업 보드와 연결해야 합니다.",
                 requires_reply: true,
               },
             ],
@@ -247,13 +247,13 @@ describe("WorkspaceHome Today dashboard", () => {
     await waitForCondition(() => container?.textContent?.includes("벤더 계약 답변 요청") ?? false);
 
     const escalationButton = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="홈에서 보낸 메일 답변 SLA 티켓 생성"]',
+      'button[aria-label="홈에서 보낸 메일 미답변 팔로업 작업 생성"]',
     );
     expect(escalationButton).not.toBeNull();
     await act(async () => {
       escalationButton?.click();
     });
-    await waitForCondition(() => container?.textContent?.includes("1개 SLA 티켓 생성") ?? false);
+    await waitForCondition(() => container?.textContent?.includes("1개 팔로업 작업 생성") ?? false);
 
     const escalationCall = fetchCalls.find((call) => call.url.endsWith("/api/tasks/reply-sla-escalations"));
     expect(escalationCall).toBeDefined();
@@ -265,7 +265,7 @@ describe("WorkspaceHome Today dashboard", () => {
     for (const headerName of publicIdentityHeaders) {
       expect(Object.keys(headers).some((key) => key.toLowerCase() === headerName)).toBe(false);
     }
-    expect(container.textContent).toContain("1개 SLA 티켓 생성, 2개 답변 대기 확인");
+    expect(container.textContent).toContain("1개 팔로업 작업 생성, 2개 답변 대기 확인");
   });
 
   it("routes Today dashboard task calendar and quick actions to implemented workspaces", async () => {

@@ -1699,6 +1699,26 @@ def test_send_email_endpoint(mock_send_email, monkeypatch):
     )
 
 
+@patch("api.emails.send_email", return_value={"status": "simulated", "simulated": True})
+def test_send_email_endpoint_rejects_header_injection_subject(mock_send_email):
+    from fastapi.testclient import TestClient
+    from main import app
+
+    client = TestClient(app, headers={"X-User-Id": "testuser"})
+
+    response = client.post(
+        "/api/emails/send",
+        json={
+            "to": "test@example.com",
+            "subject": "Re: Test\r\nBcc: attacker@example.com",
+            "body": "This is a reply.",
+        },
+    )
+
+    assert response.status_code == 422
+    mock_send_email.assert_not_called()
+
+
 @patch("api.emails.send_email", return_value={"status": "sent", "simulated": False})
 def test_send_email_endpoint_rate_limits_per_user(mock_send_email, monkeypatch):
     from fastapi.testclient import TestClient
@@ -1931,7 +1951,6 @@ async def test_get_pending_replies(client: AsyncClient, db_session):
 
 
 def test_email_owner_filters():
-    from api.emails import email_owner_filters
     from api.auth import AuthContext
 
     # Test with organization_id
@@ -1942,7 +1961,7 @@ def test_email_owner_filters():
         group_ids=(),
         workspace_id="ws-789",
     )
-    filters1 = email_owner_filters(ctx1)
+    filters1 = Email.owner_filters(ctx1.user_id, ctx1.organization_id)
 
     assert len(filters1) == 2
     assert (
@@ -1962,7 +1981,7 @@ def test_email_owner_filters():
         group_ids=(),
         workspace_id="ws-789",
     )
-    filters2 = email_owner_filters(ctx2)
+    filters2 = Email.owner_filters(ctx2.user_id, ctx2.organization_id)
 
     assert len(filters2) == 2
     assert (

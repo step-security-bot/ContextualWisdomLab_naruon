@@ -10,6 +10,8 @@ from services.llm_service import (
     extract_todos_and_summary,
     draft_reply,
     ExtractionResult,
+    OLLAMA_DRAFT_REPLY_MAX_TOKENS,
+    OLLAMA_NATIVE_CHAT_TIMEOUT_SECONDS,
 )
 
 
@@ -456,6 +458,7 @@ async def test_draft_reply_success(mock_openai):
         mock_openai.chat.completions.create.call_args.kwargs["model"]
         == settings.OPENAI_MODEL
     )
+    assert "max_tokens" not in mock_openai.chat.completions.create.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -478,6 +481,101 @@ async def test_draft_reply_uses_selected_provider_model(mock_openai):
 
     assert result == "Drafted reply text"
     assert mock_openai.chat.completions.create.call_args.kwargs["model"] == "gemma4"
+
+
+@pytest.mark.parametrize(
+    ("validated_base_url", "native_chat_url"),
+    [
+        ("http://ollama:11434/v1", "http://ollama:11434/api/chat"),
+        ("http://localhost:11434/v1", "http://localhost:11434/api/chat"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_draft_reply_uses_ollama_native_chat_without_thinking(
+    validated_base_url,
+    native_chat_url,
+):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"message": {"content": "초대해주셔서 감사합니다. 참석하겠습니다."}}
+
+    fake_http_client = MagicMock()
+    fake_http_client.post = AsyncMock(return_value=FakeResponse())
+    fake_http_client.aclose = AsyncMock()
+
+    with (
+        patch(
+            "services.llm_service.build_llm_provider_http_client",
+            new=AsyncMock(return_value=(validated_base_url, fake_http_client)),
+        ),
+        patch("services.llm_service.AsyncOpenAI") as mock_async_openai,
+    ):
+        result = await draft_reply(
+            "Test email",
+            "Draft a positive reply",
+            "test-key",
+            base_url=validated_base_url,
+            model="gemma4:e2b-it-qat",
+        )
+
+    assert result == "초대해주셔서 감사합니다. 참석하겠습니다."
+    mock_async_openai.assert_not_called()
+    fake_http_client.post.assert_awaited_once()
+    assert fake_http_client.post.await_args.args == (native_chat_url,)
+    payload = fake_http_client.post.await_args.kwargs["json"]
+    assert payload["model"] == "gemma4:e2b-it-qat"
+    assert payload["think"] is False
+    assert payload["stream"] is False
+    assert payload["options"] == {"num_predict": OLLAMA_DRAFT_REPLY_MAX_TOKENS}
+    assert (
+        fake_http_client.post.await_args.kwargs["timeout"]
+        == OLLAMA_NATIVE_CHAT_TIMEOUT_SECONDS
+    )
+    fake_http_client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_draft_reply_keeps_non_ollama_localhost_openai_compatible():
+    fake_http_client = MagicMock()
+    fake_http_client.post = AsyncMock()
+    mock_response = MagicMock()
+    mock_message = MagicMock()
+    mock_message.content = "Drafted reply text"
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_response.choices = [mock_choice]
+
+    with (
+        patch(
+            "services.llm_service.build_llm_provider_http_client",
+            new=AsyncMock(return_value=("http://localhost:8000/v1", fake_http_client)),
+        ),
+        patch("services.llm_service.AsyncOpenAI") as mock_async_openai,
+    ):
+        mock_client = MagicMock()
+        mock_client.close = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_async_openai.return_value = mock_client
+
+        result = await draft_reply(
+            "Test email",
+            "Draft a positive reply",
+            "test-key",
+            base_url="http://localhost:8000/v1",
+            model="local-openai-compatible",
+        )
+
+    assert result == "Drafted reply text"
+    fake_http_client.post.assert_not_called()
+    mock_async_openai.assert_called_once()
+    assert (
+        mock_client.chat.completions.create.call_args.kwargs["model"]
+        == "local-openai-compatible"
+    )
+    mock_client.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

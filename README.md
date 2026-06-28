@@ -133,7 +133,7 @@ mail/calendar/file systems.
   Home KPIs and judgment points. Pending replies are calculated from
   customer-owned mailbox metadata; Naruon does not host the mailbox or fabricate
   provider writes.
-- **Reply SLA ticket escalation**: Home and Tasks can call signed
+- **Overdue reply follow-up**: Home and Tasks can call signed
   `POST /api/tasks/reply-sla-escalations` to convert overdue pending sent-mail
   replies into opaque, source-linked `reply_sla` ticket tasks. Escalation reuses
   server-side reply tracking, keeps generated titles plain text, and does not

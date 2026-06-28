@@ -139,7 +139,6 @@ class SecurityAuditEvent(Base):
         ),
     )
 
-
 class LLMProvider(Base):
     __tablename__ = "llm_providers"
     __table_args__ = (
@@ -341,6 +340,7 @@ class PromptTemplate(Base):
         ),
     )
 
+
     id: Mapped[int] = mapped_column(primary_key=True)
     prompt_uid: Mapped[str] = mapped_column(
         String,
@@ -469,6 +469,7 @@ class AgentRunRecord(Base):
 
 class Email(Base):
     __tablename__ = "email_records"
+
     __table_args__ = (
         UniqueConstraint(
             "user_id",
@@ -483,6 +484,15 @@ class Email(Base):
             "date",
         ),
     )
+
+    @classmethod
+    def owner_filters(cls, user_id: str, organization_id: str | None):
+        organization_filter = (
+            cls.organization_id == organization_id
+            if organization_id is not None
+            else cls.organization_id.is_(None)
+        )
+        return (cls.user_id == user_id, organization_filter)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Owner scope columns are intentionally plaintext and indexed: signed-session
@@ -504,7 +514,8 @@ class Email(Base):
     references: Mapped[str | None] = mapped_column(String, nullable=True)
     date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), index=True)
     body: Mapped[str] = mapped_column(Text)
-    embedding = mapped_column(Vector(1536))
+    # Defer large pgvector payloads on default entity loads.
+    embedding = mapped_column(Vector(1536), deferred=True)
     attachments: Mapped[list["Attachment"]] = relationship(
         back_populates="email", cascade="all, delete-orphan"
     )
@@ -572,7 +583,8 @@ class Attachment(Base):
     email_id: Mapped[int] = mapped_column(ForeignKey("email_records.id"))
     filename: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
-    embedding = mapped_column(Vector(1536))
+    # Defer large pgvector payloads on default entity loads.
+    embedding = mapped_column(Vector(1536), deferred=True)
 
     email: Mapped["Email"] = relationship(back_populates="attachments")
 

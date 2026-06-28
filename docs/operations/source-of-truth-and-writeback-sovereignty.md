@@ -44,7 +44,7 @@ contracts, source-linked ticket tasks, self-sent knowledge capture into
 idempotent ticket tasks, deterministic sender ontology action hints, generic
 WebDAV writeback intent, source-backed Today dashboard pending reply reads from
 `/api/emails/pending-replies`, self-sent knowledge WebDAV/Notes materialization
-intent, pending-reply SLA escalation into idempotent source-linked `reply_sla`
+intent, overdue-reply follow-up into idempotent source-linked `reply_sla`
 ticket tasks, DB-backed CalDAV intent source selection through opaque
 `calendar_writeback_sources.source_uid` rows exposed to the Calendar workspace
 through a signed source-registry read, and WebDAV intent selection through
@@ -93,7 +93,7 @@ materialization: users can create intent-only evidence or explicitly request
 connector execution, and the UI shows execution/retry state without exposing
 target paths, opaque source ids, runner ids, retry ids, or audit event names.
 Data workspace document materialization follows the same deliberate execution
-boundary for uploaded workspace documents. Configurable SLA policy storage and
+boundary for uploaded workspace documents. Configurable reply deadline policy storage and
 any remaining source-registry expansion remain episode work and must preserve
 this registry boundary.
 

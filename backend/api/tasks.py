@@ -104,7 +104,7 @@ def _safe_email_subject(subject: str | None) -> str:
 
 
 def _reply_sla_task_title(email: Email) -> str:
-    return f"답변 SLA 확인: {_safe_email_subject(email.subject)}"
+    return f"미답변 팔로업: {_safe_email_subject(email.subject)}"
 
 
 def _email_date_utc(email: Email) -> datetime.datetime:
@@ -162,7 +162,7 @@ async def create_reply_sla_escalations(
             status_code=409,
             detail={
                 "error_code": "reply_sla_task_conflict",
-                "message": "Reply SLA task conflict",
+                "message": "Overdue reply follow-up task conflict",
             }
         ) from None
     return _reply_sla_response(escalation_result)

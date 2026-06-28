@@ -83,6 +83,18 @@ describe('toMailBodyText', () => {
     expect(toMailBodyText('Line 1\n\n\n\nLine 2')).toBe('Line 1\n\nLine 2');
   });
 
+  it('collapses CRLF newlines down to preserved paragraph breaks', () => {
+    expect(toMailBodyText('Line 1\r\n\r\n\r\nLine 2')).toBe('Line 1\n\nLine 2');
+  });
+
+  it('collapses whitespace-only blank lines down to preserved paragraph breaks', () => {
+    expect(toMailBodyText('Line 1\n \n \nLine 2')).toBe('Line 1\n\nLine 2');
+  });
+
+  it('collapses mixed CRLF, tabs, and spaces down to preserved paragraph breaks', () => {
+    expect(toMailBodyText('Line 1\r\n  \t  \r\n \r\nLine 2')).toBe('Line 1\n\nLine 2');
+  });
+
   it('preserves single and double newlines', () => {
     expect(toMailBodyText('Line 1\nLine 2\n\nLine 3')).toBe('Line 1\nLine 2\n\nLine 3');
   });

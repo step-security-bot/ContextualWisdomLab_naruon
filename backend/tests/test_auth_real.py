@@ -13,16 +13,18 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from api.auth import (
-    is_tenant_admin_role,
-    is_admin_role,
     AuthContext,
     OIDC_ALLOWED_ALGORITHMS,
     SESSION_ALLOWED_ALGORITHMS,
     SESSION_AUTH_RATE_LIMIT_MAX_FAILURES,
     _session_auth_failure_buckets,
+    _auth_context_from_session_payload,
+    build_auth_context,
     ensure_organization_access,
     get_auth_context,
     get_current_user,
+    is_admin_role,
+    is_tenant_admin_role,
 )
 from core.config import settings
 from db.session import get_db
@@ -221,6 +223,37 @@ def test_runtime_auth_dependencies_do_not_declare_dev_header_api_surface():
 
     assert RUNTIME_HEADER_PARAMS.isdisjoint(auth_context_params)
     assert RUNTIME_HEADER_PARAMS.isdisjoint(current_user_params)
+
+
+def test_build_auth_context_accepts_signed_bearer_session():
+    settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
+    token = _signed_session_token(_valid_session_payload())
+
+    context = build_auth_context(authorization=f"Bearer {token}")
+
+    assert context == AuthContext(
+        user_id="alice",
+        role="member",
+        organization_id="org-acme",
+        group_ids=("group-1", "group-2"),
+        workspace_id="workspace-org-acme",
+        session_verifier="hmac",
+    )
+    assert context.session_verifier == "hmac"
+
+
+def test_build_auth_context_rejects_missing_auth():
+    with pytest.raises(HTTPException) as exc:
+        build_auth_context(authorization=None)
+
+    assert exc.value.status_code == 401
+
+
+def test_build_auth_context_rejects_invalid_token():
+    with pytest.raises(HTTPException) as exc:
+        build_auth_context(authorization="Bearer invalid.jwt.token")
+
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -971,6 +1004,127 @@ async def test_signed_bearer_session_with_oidc(monkeypatch):
     assert decode_options == [
         {"require": ("exp", "iss", "aud"), "verify_signature": True}
     ]
+
+
+@pytest.mark.asyncio
+async def test_oidc_session_accepts_tuple_audience(monkeypatch):
+    import jwt
+
+    previous_issuer_url = settings.OIDC_ISSUER_URL
+    previous_client_id = settings.OIDC_CLIENT_ID
+    previous_secret = settings.AUTH_SESSION_HMAC_SECRET
+    settings.OIDC_ISSUER_URL = "https://login.example.test/realms/naruon"
+    settings.OIDC_CLIENT_ID = "naruon-api"
+    settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
+
+    class MockKey:
+        key_id = "test-key"
+        key = "public_key"
+
+    monkeypatch.setattr("api.auth.jwks_client", object())
+    monkeypatch.setattr("api.auth._cached_oidc_signing_keys", (MockKey(),))
+
+    def mock_jwt_decode(*args, **kwargs):
+        return {
+            "iss": "https://login.example.test/realms/naruon",
+            "aud": ("naruon-api", "naruon-admin"),
+            "sub": "alice",
+            "role": "member",
+            "org": "org-acme",
+            "groups": ["group-1", "group-2"],
+            "workspace": "workspace-org-acme",
+            "exp": int(time.time()) + 300,
+        }
+
+    monkeypatch.setattr(jwt, "decode", mock_jwt_decode)
+
+    try:
+        token = _signed_session_token(
+            _valid_session_payload(),
+            header={"alg": "RS256", "typ": "JWT", "kid": "test-key"},
+        )
+        context = await get_auth_context(authorization=f"Bearer {token}")
+    finally:
+        settings.OIDC_ISSUER_URL = previous_issuer_url
+        settings.OIDC_CLIENT_ID = previous_client_id
+        settings.AUTH_SESSION_HMAC_SECRET = previous_secret
+
+    assert context.session_verifier == "oidc"
+    assert context.user_id == "alice"
+
+
+@pytest.mark.asyncio
+async def test_oidc_session_rejects_missing_client_id_after_decode(monkeypatch):
+    import jwt
+
+    previous_issuer_url = settings.OIDC_ISSUER_URL
+    previous_client_id = settings.OIDC_CLIENT_ID
+    previous_secret = settings.AUTH_SESSION_HMAC_SECRET
+    settings.OIDC_ISSUER_URL = "https://login.example.test/realms/naruon"
+    settings.OIDC_CLIENT_ID = None
+    settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
+
+    class MockKey:
+        key_id = "test-key"
+        key = "public_key"
+
+    monkeypatch.setattr("api.auth.jwks_client", object())
+    monkeypatch.setattr("api.auth._cached_oidc_signing_keys", (MockKey(),))
+
+    def mock_jwt_decode(*args, **kwargs):
+        return {
+            "iss": "https://login.example.test/realms/naruon",
+            "sub": "alice",
+            "role": "member",
+            "org": "org-acme",
+            "groups": ["group-1", "group-2"],
+            "workspace": "workspace-org-acme",
+            "exp": int(time.time()) + 300,
+        }
+
+    monkeypatch.setattr(jwt, "decode", mock_jwt_decode)
+    token = _signed_session_token(
+        _valid_session_payload(),
+        header={"alg": "RS256", "typ": "JWT", "kid": "test-key"},
+    )
+
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await get_auth_context(authorization=f"Bearer {token}")
+    finally:
+        settings.OIDC_ISSUER_URL = previous_issuer_url
+        settings.OIDC_CLIENT_ID = previous_client_id
+        settings.AUTH_SESSION_HMAC_SECRET = previous_secret
+
+    assert exc.value.status_code == 401
+
+
+def test_oidc_session_metadata_rejects_missing_issuer_configuration():
+    previous_issuer_url = settings.OIDC_ISSUER_URL
+    previous_client_id = settings.OIDC_CLIENT_ID
+    settings.OIDC_ISSUER_URL = None
+    settings.OIDC_CLIENT_ID = "naruon-api"
+
+    try:
+        with pytest.raises(HTTPException) as exc:
+            _auth_context_from_session_payload(
+                {
+                    "iss": "https://login.example.test/realms/naruon",
+                    "aud": ["naruon-api"],
+                    "sub": "alice",
+                    "role": "member",
+                    "org": "org-acme",
+                    "groups": [],
+                    "workspace": "workspace-org-acme",
+                    "exp": int(time.time()) + 300,
+                },
+                "oidc",
+            )
+    finally:
+        settings.OIDC_ISSUER_URL = previous_issuer_url
+        settings.OIDC_CLIENT_ID = previous_client_id
+
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio

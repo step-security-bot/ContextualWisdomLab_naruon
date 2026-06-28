@@ -6,6 +6,8 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 
+from runner.utils.dispatch import dispatch_error
+
 
 @dataclass(frozen=True)
 class LocalDavSourceConfig:
@@ -57,26 +59,26 @@ class LocalDavAdapters:
     ) -> dict[str, Any]:
         source = self._source_for_payload(payload, protocol)
         if source is None:
-            return self._error("source_not_configured")
+            return dispatch_error("source_not_configured")
         if not source.writeback_enabled:
-            return self._error("source_writeback_disabled")
+            return dispatch_error("source_writeback_disabled")
 
         if_match = self._payload_text(payload, "if_match")
         if if_match is None:
-            return self._error("missing_if_match")
+            return dispatch_error("missing_if_match")
 
         target_path = self._safe_target_path(payload.get("target_path"))
         if target_path is None:
-            return self._error("invalid_target_path")
+            return dispatch_error("invalid_target_path")
 
         content = self._payload_content(payload.get("content"))
         if content is None:
-            return self._error("invalid_payload")
+            return dispatch_error("invalid_payload")
 
         try:
             target_url = self._target_url(source.base_url, target_path)
         except ValueError as exc:
-            return self._error(str(exc))
+            return dispatch_error(str(exc))
 
         content_type = self._payload_text(payload, "content_type") or default_content_type
         headers = {"Content-Type": content_type, "If-Match": if_match}
@@ -95,7 +97,7 @@ class LocalDavAdapters:
                     auth=auth,
                 )
         except httpx.HTTPError:
-            return self._error("provider_request_failed")
+            return dispatch_error("provider_request_failed")
 
         return self._result_from_response(response)
 
@@ -212,14 +214,6 @@ class LocalDavAdapters:
                 "provider_write_executed": False,
                 "provider_status": status_code,
             }
-        result = self._error("provider_write_failed")
+        result = dispatch_error("provider_write_failed")
         result["provider_status"] = status_code
         return result
-
-    def _error(self, error_code: str) -> dict[str, Any]:
-        return {
-            "status": "error",
-            "error": error_code,
-            "error_code": error_code,
-            "provider_write_executed": False,
-        }

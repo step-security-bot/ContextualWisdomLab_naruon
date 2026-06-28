@@ -1,4 +1,4 @@
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from contextlib import contextmanager
 from urllib.parse import unquote
 
@@ -6,6 +6,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from api.auth import get_auth_context
+from api.dav import _dav_path_owner_user_id
 from db.models import ProjectFolder
 from db.session import get_db
 from main import app
@@ -113,6 +114,42 @@ def test_dav_rejects_path_traversal(dev_auth_dependency_overrides):
         )
         assert response.status_code == 403
         assert response.json()["detail"] == "DAV path must include an owner user"
+
+
+def test_dav_owner_parser_rejects_backslash_traversal():
+    owner_user_id = _dav_path_owner_user_id("user123/..\\other-user/projects")
+
+    assert owner_user_id is None
+
+
+def test_dav_rejects_backslash_traversal(dev_auth_dependency_overrides):
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND", "/dav/user123/..\\other-user/projects/", headers=AUTH_HEADERS
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "DAV path must include an owner user"
+
+
+def test_dav_owner_parser_rejects_double_encoded_traversal():
+    owner_user_id = _dav_path_owner_user_id(
+        "user123/%252e%252e%252fother-user/projects"
+    )
+
+    assert owner_user_id is None
+
+
+def test_dav_rejects_double_encoded_traversal(dev_auth_dependency_overrides):
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/%252e%252e%252fother-user/projects/",
+            headers=AUTH_HEADERS,
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "DAV path must include an owner user"
 
 
 def test_dav_rejects_ownerless_path(dev_auth_dependency_overrides):

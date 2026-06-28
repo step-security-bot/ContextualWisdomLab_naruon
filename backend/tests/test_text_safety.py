@@ -35,6 +35,21 @@ def test_strip_html_markup_preserves_safe_angle_bracket_display_text(safe_text):
     assert strip_html_markup(safe_text) == safe_text
 
 
+def test_strip_html_markup_plain_text_fast_path_skips_parser(monkeypatch):
+    class ParserThatShouldNotRun:
+        def __init__(self):
+            raise AssertionError("plain-text fast path should not instantiate parser")
+
+    monkeypatch.setattr(
+        "services.text_safety._PlainTextHTMLParser", ParserThatShouldNotRun
+    )
+
+    assert (
+        strip_html_markup("plain   text\n\n second\tline ")
+        == "plain text\nsecond line"
+    )
+
+
 def test_contains_html_markup_allows_plain_alphabetic_comparison_text():
     assert contains_html_markup("Compare a < b before saving") is False
 

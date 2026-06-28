@@ -68,7 +68,7 @@ const mobileWorkspaceMenuItems = [
   { label: '받은편지함', description: '메일 스레드', icon: Inbox, href: '#mobile-inbox', view: 'inbox' as const },
   { label: '맥락 검색', description: '메일, 첨부, 일정, 사람 맥락 검색', icon: Search, href: '#mobile-search', view: 'search' as const },
   { label: '일정 연결', description: '일정 반영 후보', icon: CalendarDays, href: '#mobile-calendar', view: 'calendar' as const },
-  { label: 'AI 실행', description: '관계 맥락과 실행 항목', icon: Sparkles, href: '#mobile-actions', view: 'actions' as const },
+  { label: '판단 보조 실행', description: '관계 맥락과 실행 항목', icon: Sparkles, href: '#mobile-actions', view: 'actions' as const },
 ];
 
 const headerActions = [
@@ -635,10 +635,10 @@ export function DashboardLayout({
         })}
         <button
           type="button"
-          aria-label="AI 빠른 실행"
+          aria-label="판단 보조 빠른 실행"
           aria-haspopup="dialog"
-          aria-controls="mobile-ai-action-menu"
-          popoverTarget="mobile-ai-action-menu"
+          aria-controls="mobile-judgment-assist-action-menu"
+          popoverTarget="mobile-judgment-assist-action-menu"
           className="mx-auto grid size-14 -translate-y-3 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-[0_18px_38px_rgba(37,99,255,0.35)] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 active:translate-y-[-10px]"
         >
           <Sparkles className="size-6" aria-hidden="true" />
@@ -663,18 +663,18 @@ export function DashboardLayout({
         })}
       </nav>
       <div
-        id="mobile-ai-action-menu"
+        id="mobile-judgment-assist-action-menu"
         role="dialog"
-        aria-label="AI 빠른 실행 메뉴"
+        aria-label="판단 보조 빠른 실행 메뉴"
         popover="auto"
         className="fixed inset-x-5 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-[70] max-h-[calc(100dvh-8rem-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain rounded-3xl border border-border bg-card/98 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.2)] backdrop:bg-transparent lg:hidden"
       >
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <p className="text-sm font-black text-foreground">AI 빠른 실행</p>
+              <p className="text-sm font-black text-foreground">판단 보조 빠른 실행</p>
               <p className="mt-1 text-xs text-muted-foreground">메일 맥락을 바로 실행으로 전환합니다.</p>
             </div>
-            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">Naruon AI</span>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">Naruon 판단 보조</span>
           </div>
           <div className="grid gap-2">
             {headerActions.map(({ label, action, icon: Icon, message }) => (
@@ -682,7 +682,7 @@ export function DashboardLayout({
                 key={action}
                 type="button"
                 data-mobile-quick-action={action}
-                popoverTarget="mobile-ai-action-menu"
+                popoverTarget="mobile-judgment-assist-action-menu"
                 popoverTargetAction="hide"
                 onClick={() => handleHeaderAction(action)}
                 className="flex min-h-12 items-center gap-3 rounded-2xl border border-border/80 bg-background/80 px-3 py-2 text-left text-sm font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"

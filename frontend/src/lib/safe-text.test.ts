@@ -22,6 +22,20 @@ describe('toSafeReactText', () => {
     expect(toSafeReactText('test\u007Ftest')).toBe('test\uFFFDtest'); // Delete
   });
 
+  it('preserves allowed whitespace control characters', () => {
+    expect(toSafeReactText('test\u0009test')).toBe('test\u0009test'); // Tab
+    expect(toSafeReactText('test\u000Atest')).toBe('test\u000Atest'); // Line Feed
+    expect(toSafeReactText('test\u000Dtest')).toBe('test\u000Dtest'); // Carriage Return
+  });
+
+  it('replaces every ambiguous control character occurrence', () => {
+    expect(toSafeReactText('hello\u0000world\u0000')).toBe('hello\uFFFDworld\uFFFD');
+    expect(toSafeReactText('\u000Btest\u000B')).toBe('\uFFFDtest\uFFFD');
+    expect(toSafeReactText('\u0000\u0008\u000B\u000C\u001B\u007F')).toBe(
+      '\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD',
+    );
+  });
+
   it('handles null values', () => {
     expect(toSafeReactText(null)).toBe('');
   });
@@ -44,6 +58,10 @@ describe('toSafeReactText', () => {
 
   it('does not use fallback for empty string', () => {
     expect(toSafeReactText('', 'fallback')).toBe('');
+  });
+
+  it('preserves standard safe whitespace', () => {
+    expect(toSafeReactText('tab\tnewline\r\n')).toBe('tab\tnewline\r\n');
   });
 
   it('removes display-ambiguous control characters for arbitrary text', () => {

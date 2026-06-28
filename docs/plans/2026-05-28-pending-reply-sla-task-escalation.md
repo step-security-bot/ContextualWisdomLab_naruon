@@ -1,4 +1,4 @@
-# Pending Reply SLA Task Escalation
+# Pending Reply Follow-Up Task Escalation
 
 Date: 2026-05-28
 
@@ -7,7 +7,7 @@ Date: 2026-05-28
 Connect source-backed pending sent-mail replies to ticket-style task escalation.
 This slice does not add database objects, does not host email, and does not
 execute provider writes. It converts customer-mailbox reply waits that exceed a
-workspace SLA threshold into source-linked `reply_sla` tasks.
+workspace reply-deadline threshold into source-linked `reply_sla` tasks.
 
 ## Confirmed Inputs
 
@@ -23,7 +23,7 @@ workspace SLA threshold into source-linked `reply_sla` tasks.
 
 ## Implementation Plan
 
-1. Add `POST /api/tasks/reply-sla-escalations` with a default 48-hour SLA and a
+1. Add `POST /api/tasks/reply-sla-escalations` with a default 48-hour reply deadline and a
    bounded limit.
 2. Reuse server-authoritative pending reply detection instead of inferring waits
    in the browser.
@@ -40,11 +40,11 @@ workspace SLA threshold into source-linked `reply_sla` tasks.
 - `python3 -m pytest backend/tests/test_tasks_api.py -q -k reply_sla`
 - `npx vitest run src/app/tasks/page.test.tsx src/components/WorkspaceHome.dashboard.test.tsx`
 - `npm run lint -- src/components/TasksLayout.tsx src/components/WorkspaceHome.tsx src/app/tasks/page.test.tsx src/components/WorkspaceHome.dashboard.test.tsx tests/e2e/dashboard-branding.spec.ts tests/e2e/helpers.ts`
-- `npm run test:e2e -- tests/e2e/dashboard-branding.spec.ts -g "pending reply SLA task escalation" --project=desktop`
+- `npm run test:e2e -- tests/e2e/dashboard-branding.spec.ts -g "pending reply follow-up task escalation" --project=desktop`
 
 ## Deferred Work
 
-- Durable reminder notifications and workspace-configurable SLA policy storage.
+- Durable reminder notifications and workspace-configurable reply deadline policy storage.
 - Provider-specific sent-folder sync completeness for OAuth, SMTP, POP3, and
   IMAP adapters.
 - Calendar/task writeback execution after source-backed provider connectors are

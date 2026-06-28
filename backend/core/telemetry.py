@@ -1,5 +1,7 @@
 import logging
 import os
+from urllib.parse import urlsplit
+
 from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
@@ -13,6 +15,21 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _otel_endpoint_has_hostname(endpoint: str) -> bool:
+    raw_endpoint = endpoint.strip()
+    if not raw_endpoint:
+        return False
+
+    parsed_endpoint = urlsplit(raw_endpoint)
+    if parsed_endpoint.netloc:
+        return parsed_endpoint.hostname is not None
+
+    if "://" in raw_endpoint:
+        return False
+
+    return urlsplit(f"//{raw_endpoint}").hostname is not None
+
+
 def setup_telemetry(app: FastAPI):
     if getattr(app.state, _TELEMETRY_STATE_KEY, False):
         logger.debug("OpenTelemetry instrumentation is already configured.")
@@ -24,6 +41,13 @@ def setup_telemetry(app: FastAPI):
 
     if not enable_otel or not otel_endpoint:
         logger.info("OpenTelemetry is disabled.")
+        return
+
+    if not _otel_endpoint_has_hostname(otel_endpoint):
+        logger.error(
+            "Invalid OTEL exporter endpoint URL: missing hostname; "
+            "continuing without tracing."
+        )
         return
 
     otlp_insecure = _env_flag("OTEL_EXPORTER_OTLP_INSECURE")

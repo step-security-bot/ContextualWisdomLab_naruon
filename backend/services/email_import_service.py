@@ -26,7 +26,6 @@ from services.embedding import (
 from services.exceptions import ArchiveError, EmailParseError, EmbeddingGenerationError
 from services.threading_service import (
     assign_thread_id,
-    email_owner_filters,
     generate_email_fingerprint,
     normalize_message_id,
 )
@@ -147,7 +146,7 @@ async def _find_existing_email(
     message_lookup_values = {message_id, f"<{message_id}>"}
     result = await session.execute(
         select(Email).where(
-            *email_owner_filters(user_id, organization_id),
+            *Email.owner_filters(user_id, organization_id),
             or_(
                 Email.message_id.in_(message_lookup_values),
                 Email.fingerprint == fingerprint,
@@ -162,7 +161,7 @@ async def _owner_email_import_count(
 ) -> int:
     count = await session.scalar(
         select(func.count(Email.id)).where(
-            *email_owner_filters(user_id, organization_id)
+            *Email.owner_filters(user_id, organization_id)
         )
     )
     return int(count or 0)

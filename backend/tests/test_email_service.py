@@ -55,6 +55,36 @@ class TestEmailService:
         ).hexdigest()
         assert fingerprint == expected
 
+    def test_generate_email_fingerprint_handles_malformed_unicode(self):
+        email_data = {
+            "sender": "test@example.com",
+            "subject": "bad surrogate \udcff",
+            "date": "2023-01-01",
+            "body": "body with null \x00 and surrogate \ud800",
+        }
+
+        fingerprint = generate_email_fingerprint(email_data)
+
+        assert len(fingerprint) == 64
+        assert fingerprint == fingerprint.lower()
+        int(fingerprint, 16)
+
+    def test_generate_email_fingerprint_preserves_distinct_surrogates(self):
+        first = {
+            "sender": "test@example.com",
+            "subject": "bad surrogate \ud800",
+            "date": "2023-01-01",
+            "body": "body",
+        }
+        second = {
+            "sender": "test@example.com",
+            "subject": "bad surrogate \ud801",
+            "date": "2023-01-01",
+            "body": "body",
+        }
+
+        assert generate_email_fingerprint(first) != generate_email_fingerprint(second)
+
     def test_generate_email_fingerprint_identical_data(self):
         email_data = {
             "sender": "test@example.com",

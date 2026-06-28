@@ -47,15 +47,6 @@ class RelationshipCaptureRequest(BaseModel):
     )
 
 
-def _email_owner_filters(auth_ctx: AuthContext):
-    organization_filter = (
-        Email.organization_id == auth_ctx.organization_id
-        if auth_ctx.organization_id is not None
-        else Email.organization_id.is_(None)
-    )
-    return (Email.user_id == auth_ctx.user_id, organization_filter)
-
-
 def _canonical_thread_id(email_row: Email) -> str:
     return (
         normalize_message_id(email_row.thread_id)
@@ -188,7 +179,7 @@ async def capture_relationship_from_source(
 ):
     result = await db.execute(
         select(Email).where(
-            *_email_owner_filters(auth_ctx),
+            *Email.owner_filters(auth_ctx.user_id, auth_ctx.organization_id),
             Email.message_id == req.source_message_id,
         )
     )

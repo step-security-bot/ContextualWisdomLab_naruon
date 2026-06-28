@@ -89,15 +89,6 @@ def thread_lookup_values(thread_id: str) -> list[str]:
     return list({thread_id, normalized, f"<{normalized}>"})
 
 
-def email_owner_filters(auth_context: AuthContext):
-    organization_filter = (
-        Email.organization_id == auth_context.organization_id
-        if auth_context.organization_id is not None
-        else Email.organization_id.is_(None)
-    )
-    return (Email.user_id == auth_context.user_id, organization_filter)
-
-
 MailFolder = Literal["inbox", "sent"]
 
 
@@ -285,7 +276,7 @@ async def get_emails(
     candidate_window = min(max(limit * 10, 200), 2000)
     result = await db.execute(
         select(Email)
-        .where(*email_owner_filters(auth_context))
+        .where(*Email.owner_filters(auth_context.user_id, auth_context.organization_id))
         .order_by(Email.date.desc())
         .limit(candidate_window)
     )
@@ -412,7 +403,7 @@ async def _fetch_existing_emails_for_candidates(
 
     result = await db.execute(
         select(Email).where(
-            *email_owner_filters(auth_context),
+            *Email.owner_filters(auth_context.user_id, auth_context.organization_id),
             or_(*predicates),
         )
     )
@@ -610,7 +601,10 @@ async def get_email(
 ):
     # Ensure auth context validates the request payload and scopes access
     result = await db.execute(
-        select(Email).where(Email.id == email_id, *email_owner_filters(auth_context))
+        select(Email).where(
+            Email.id == email_id,
+            *Email.owner_filters(auth_context.user_id, auth_context.organization_id),
+        )
     )
     email = result.scalar_one_or_none()
     if not email:
@@ -631,7 +625,7 @@ async def get_email_thread(
     result = await db.execute(
         select(Email)
         .where(
-            *email_owner_filters(auth_context),
+            *Email.owner_filters(auth_context.user_id, auth_context.organization_id),
             or_(
                 Email.thread_id.in_(lookup_values), Email.message_id.in_(lookup_values)
             ),
@@ -650,7 +644,7 @@ async def get_email_thread(
 
 class SendEmailRequest(BaseModel):
     to: EmailStr
-    subject: str
+    subject: str = Field(..., max_length=256, pattern=r"^[^\r\n]*$")
     body: str
     in_reply_to: str | None = None  # O3: email threading support
     references: str | None = None

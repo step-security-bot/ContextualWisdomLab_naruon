@@ -13,7 +13,7 @@ TEST_AUTH_SESSION_HMAC_SECRET = os.environ.setdefault(
 # Set required environment variables before importing settings
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://test:test@localhost:5432/test_db"
 
-from core.config import Settings, settings  # noqa: E402
+from core.config import Settings, parse_allowed_cors_origins, settings  # noqa: E402
 
 
 def _settings_without_env_file() -> Settings:
@@ -110,6 +110,49 @@ def test_allowed_cors_origins_are_validated_and_normalized(monkeypatch):
         "http://example.com",
         "https://example.com:8443",
     ]
+
+
+def test_parse_allowed_cors_origins_normalizes_entries_and_ignores_empty_items():
+    origins = parse_allowed_cors_origins(
+        " https://Example.com:443 , http://localhost:3000 ,  ,, https://test.net "
+    )
+
+    assert origins == [
+        "https://example.com",
+        "http://localhost:3000",
+        "https://test.net",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("allowed_origins", "error_match"),
+    [
+        ("*", "must not include wildcards"),
+        ("https://*.example.com", "must not include wildcards"),
+        ("ws://example.com", "entries must use http or https"),
+        ("ftp://example.com", "entries must use http or https"),
+        ("https://user:pass@example.com", "entries must not include userinfo"),
+        ("https://", "entries must include a host"),
+        (
+            "https://example.com/path",
+            "entries must be origins without path, query, or fragment",
+        ),
+        (
+            "https://example.com?query=1",
+            "entries must be origins without path, query, or fragment",
+        ),
+        (
+            "https://example.com#fragment",
+            "entries must be origins without path, query, or fragment",
+        ),
+        ("https://example.com:invalid_port", "entries must include a valid port"),
+    ],
+)
+def test_parse_allowed_cors_origins_rejects_unsafe_entries(
+    allowed_origins: str, error_match: str
+):
+    with pytest.raises(ValueError, match=error_match):
+        parse_allowed_cors_origins(allowed_origins)
 
 
 @pytest.mark.parametrize(

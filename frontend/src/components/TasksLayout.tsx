@@ -245,10 +245,10 @@ export function TasksLayout() {
         ));
       }
       setReplySlaStatus('ready');
-      setTicketActionStatus(`${result.created}개 답변 SLA 티켓을 생성했습니다. ${result.evaluated}개 대기 메일을 ${result.policy.overdue_hours}시간 기준으로 확인했습니다.`);
+      setTicketActionStatus(`${result.created}개 미답변 팔로업 작업을 생성했습니다. ${result.evaluated}개 대기 메일을 ${result.policy.overdue_hours}시간 기준으로 확인했습니다.`);
     } catch {
       setReplySlaStatus('error');
-      setTicketActionStatus('답변 SLA 티켓 생성에 실패했습니다.');
+      setTicketActionStatus('미답변 팔로업 작업 생성에 실패했습니다.');
     }
   };
 
@@ -333,7 +333,7 @@ export function TasksLayout() {
               onChange={(event) => setTaskSearch(event.target.value)}
               placeholder="작업 맥락 검색..."
               aria-label="작업 맥락 검색"
-              className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-9 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:w-64 [&::-webkit-search-cancel-button]:hidden"
+              className="h-9 w-full [&::-webkit-search-cancel-button]:hidden rounded-md border border-border bg-background pl-9 pr-9 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:w-64"
             />
             {taskSearch.length > 0 && (
               <button
@@ -398,33 +398,34 @@ export function TasksLayout() {
             ))}
           </div>
 
-          <section aria-label="pending reply SLA escalation" className="mt-4 border-t border-border pt-4">
+          <section aria-label="기한 지난 답변 팔로업" className="mt-4 border-t border-border pt-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-foreground">보낸 메일 SLA 승격</h3>
+                <h3 className="text-sm font-bold text-foreground">기한 지난 답변 처리</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   48시간 넘게 답변이 없는 보낸 메일을 원본 메일과 스레드가 연결된 티켓으로 올립니다.
                 </p>
               </div>
               <button
                 type="button"
-                aria-label="보낸 메일 답변 SLA 티켓 생성"
+                aria-label="보낸 메일 미답변 팔로업 작업 생성"
                 disabled={replySlaStatus === 'loading'}
+                aria-busy={replySlaStatus === 'loading'}
                 onClick={() => void handleReplySlaEscalation()}
                 className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-70"
               >
                 <Plus className="size-3.5" />
-                {replySlaStatus === 'loading' ? '확인 중' : 'SLA 티켓 생성'}
+                {replySlaStatus === 'loading' ? '확인 중' : '팔로업 작업 생성'}
               </button>
             </div>
             {replySlaStatus === 'ready' ? (
               <p role="status" className="mt-3 text-xs font-semibold text-muted-foreground">
-                답변 SLA 티켓 승격 결과가 보드에 반영되었습니다.
+                미답변 팔로업 결과가 보드에 반영되었습니다.
               </p>
             ) : null}
             {replySlaStatus === 'error' ? (
               <p role="status" className="mt-3 text-xs font-semibold text-red-700">
-                답변 SLA 티켓 승격 API를 완료하지 못했습니다.
+                미답변 팔로업 작업 생성을 완료하지 못했습니다.
               </p>
             ) : null}
           </section>
@@ -512,6 +513,7 @@ export function TasksLayout() {
                             type="button"
                             aria-label={`${displayTitle} WebDAV 지식 노트 의도 생성`}
                             disabled={currentKnowledgeIntent.state === 'loading'}
+                            aria-busy={currentKnowledgeIntent.state === 'loading'}
                             onClick={() => void handleKnowledgeIntentCreate(task.id)}
                             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-70"
                           >
@@ -522,6 +524,7 @@ export function TasksLayout() {
                             type="button"
                             aria-label={`${displayTitle} WebDAV 지식 노트 실행 요청`}
                             disabled={currentKnowledgeIntent.state === 'loading'}
+                            aria-busy={currentKnowledgeIntent.state === 'loading'}
                             onClick={() => void handleKnowledgeIntentCreate(task.id, true)}
                             className="rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15 disabled:cursor-wait disabled:opacity-70"
                           >

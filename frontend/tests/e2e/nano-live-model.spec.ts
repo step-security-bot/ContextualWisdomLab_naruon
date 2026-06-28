@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIResponse } from '@playwright/test';
 import crypto from 'node:crypto';
 
 // Live model-path E2E (companion to the mocked nano.spec.ts).
@@ -50,6 +50,25 @@ function liveSessionCookie(token: string): string {
   return `naruon_session=${token}`;
 }
 
+function sameOriginRequestHeaders(token: string): Record<string, string> {
+  const origin = new URL(process.env.LIVE_BASE_URL ?? 'http://127.0.0.1:18080').origin;
+  return {
+    Cookie: liveSessionCookie(token),
+    Origin: origin,
+    Referer: `${origin}/`,
+  };
+}
+
+async function responseSummary(response: APIResponse): Promise<string> {
+  return `${response.status()} ${response.statusText()}: ${await response.text()}`;
+}
+
+async function expectOkResponse(response: APIResponse): Promise<void> {
+  if (!response.ok()) {
+    expect(response.ok(), await responseSummary(response)).toBeTruthy();
+  }
+}
+
 test.skip(
   !process.env.LIVE_BASE_URL && process.env.RUN_LIVE_E2E !== '1',
   'Requires a live stack with ollama serving gemma4:e2b-it-qat + embeddinggemma.',
@@ -61,7 +80,7 @@ test.setTimeout(600_000);
 test('nano live: 답장 초안 reaches the gemma4 e2b chat model', async ({ request }) => {
   const token = signLiveSession();
   const response = await request.post('/api/llm/draft', {
-    headers: { Cookie: liveSessionCookie(token) },
+    headers: sameOriginRequestHeaders(token),
     data: {
       email_body:
         '다음 주 화요일 오후 2시에 프로젝트 킥오프 미팅을 제안드립니다. 가능하신지 회신 부탁드립니다.',
@@ -69,7 +88,7 @@ test('nano live: 답장 초안 reaches the gemma4 e2b chat model', async ({ requ
     },
     timeout: 600_000,
   });
-  expect(response.ok()).toBeTruthy();
+  await expectOkResponse(response);
   const body = await response.json();
   const draft =
     typeof body?.draft === 'string' ? body.draft : JSON.stringify(body ?? {});
@@ -80,13 +99,13 @@ test('nano live: 답장 초안 reaches the gemma4 e2b chat model', async ({ requ
 test('nano live: 맥락 검색 exercises the embeddinggemma model', async ({ request }) => {
   const token = signLiveSession();
   const response = await request.post('/api/search', {
-    headers: { Cookie: liveSessionCookie(token) },
+    headers: sameOriginRequestHeaders(token),
     data: { query: '프로젝트 킥오프 일정' },
     timeout: 120_000,
   });
   // The query is embedded server-side before the vector search runs; a 2xx proves
   // the embedding model answered, regardless of how many seeded rows match.
-  expect(response.ok()).toBeTruthy();
+  await expectOkResponse(response);
   const body = await response.json();
   const results = Array.isArray(body) ? body : body?.results;
   expect(Array.isArray(results)).toBeTruthy();

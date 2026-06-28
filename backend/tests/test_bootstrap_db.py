@@ -784,7 +784,7 @@ async def test_connector_signal_events_real_postgres_bootstrap_smoke():
                     "message_id": "<reply-sla-bootstrap-smoke@example.com>",
                     "sender": "smoke@example.com",
                     "recipients": "owner@example.com",
-                    "subject": "Bootstrap duplicate reply SLA",
+                    "subject": "Bootstrap duplicate reply follow-up",
                     "body": "bootstrap duplicate smoke",
                 },
             )

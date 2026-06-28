@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -22,7 +22,9 @@ const NO_STORE_HEADERS = {
 };
 const SESSION_VERIFICATION_RATE_LIMIT_WINDOW_MS = 60_000;
 const SESSION_VERIFICATION_RATE_LIMIT_MAX_ATTEMPTS = 10;
+const SESSION_VERIFICATION_SOURCE_RATE_LIMIT_MAX_ATTEMPTS = 30;
 const SESSION_VERIFICATION_RATE_LIMIT_MAX_BUCKETS = 4096;
+const SESSION_VERIFICATION_PRUNE_SCAN_LIMIT = 64;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 
 type SessionVerificationBucket = {
@@ -111,10 +113,13 @@ function sessionVerificationKey(token: string) {
 }
 
 function pruneSessionVerificationBuckets(now: number) {
+  let scanned = 0;
   for (const [key, bucket] of sessionVerificationBuckets) {
     if (bucket.resetAt <= now) {
       sessionVerificationBuckets.delete(key);
     }
+    scanned += 1;
+    if (scanned >= SESSION_VERIFICATION_PRUNE_SCAN_LIMIT) break;
   }
 }
 
@@ -132,15 +137,25 @@ function ensureSessionVerificationBucketCapacity(key: string) {
   }
 }
 
-function recordSessionVerificationAttempt(token: string):
+function sessionVerificationSourceKey(request: NextRequest) {
+  const forwardedFor = firstHeaderValue(request.headers.get("x-forwarded-for"));
+  const realIp = firstHeaderValue(request.headers.get("x-real-ip"));
+  const cloudflareIp = firstHeaderValue(request.headers.get("cf-connecting-ip"));
+  const address = [forwardedFor, realIp, cloudflareIp].find(
+    (value) => value && !CONTROL_CHARACTER_PATTERN.test(value),
+  ) ?? "unknown";
+  const userAgent = request.headers.get("user-agent")?.slice(0, 128) ?? "unknown";
+  return createHash("sha256").update(`${address}\0${userAgent}`).digest("hex");
+}
+
+function recordSessionVerificationAttempt(key: string, maxAttempts: number):
   | { limited: false }
   | { limited: true; retryAfterSeconds: number } {
   const now = Date.now();
   pruneSessionVerificationBuckets(now);
 
-  const key = sessionVerificationKey(token);
   const bucket = sessionVerificationBuckets.get(key);
-  if (bucket && bucket.count >= SESSION_VERIFICATION_RATE_LIMIT_MAX_ATTEMPTS) {
+  if (bucket && bucket.count >= maxAttempts) {
     return {
       limited: true,
       retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
@@ -159,19 +174,37 @@ function recordSessionVerificationAttempt(token: string):
   return { limited: false };
 }
 
-function sessionRateLimitedResponse(retryAfterSeconds: number) {
+function sessionRateLimitedResponse(retryAfterSeconds: number, maxAttempts: number) {
   return NextResponse.json(
     { error_code: "session_verification_rate_limited" },
     {
       status: 429,
       headers: {
         ...NO_STORE_HEADERS,
-        "Retry-After": String(retryAfterSeconds),
-        "X-RateLimit-Limit": String(SESSION_VERIFICATION_RATE_LIMIT_MAX_ATTEMPTS),
+        "Retry-After": String(retryAfterSeconds + randomInt(1, 4)),
+        "X-RateLimit-Limit": String(maxAttempts),
         "X-RateLimit-Remaining": "0",
       },
     },
   );
+}
+
+function setVerifiedSessionCookie(response: NextResponse, token: string) {
+  response.cookies.set({
+    ...buildSessionCookieOptions(token),
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+  });
+}
+
+function setExpiredSessionCookie(response: NextResponse) {
+  response.cookies.set({
+    ...buildExpiredSessionCookieOptions(),
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+  });
 }
 
 type BackendSessionResponse = {
@@ -264,9 +297,26 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: NO_STORE_HEADERS },
     );
   }
-  const rateLimit = recordSessionVerificationAttempt(accessToken);
-  if (rateLimit.limited) {
-    return sessionRateLimitedResponse(rateLimit.retryAfterSeconds);
+  const tokenRateLimit = recordSessionVerificationAttempt(
+    `token:${sessionVerificationKey(accessToken)}`,
+    SESSION_VERIFICATION_RATE_LIMIT_MAX_ATTEMPTS,
+  );
+  if (tokenRateLimit.limited) {
+    return sessionRateLimitedResponse(
+      tokenRateLimit.retryAfterSeconds,
+      SESSION_VERIFICATION_RATE_LIMIT_MAX_ATTEMPTS,
+    );
+  }
+
+  const sourceRateLimit = recordSessionVerificationAttempt(
+    `source:${sessionVerificationSourceKey(request)}`,
+    SESSION_VERIFICATION_SOURCE_RATE_LIMIT_MAX_ATTEMPTS,
+  );
+  if (sourceRateLimit.limited) {
+    return sessionRateLimitedResponse(
+      sourceRateLimit.retryAfterSeconds,
+      SESSION_VERIFICATION_SOURCE_RATE_LIMIT_MAX_ATTEMPTS,
+    );
   }
 
   const claims = await verifySessionToken(accessToken);
@@ -282,7 +332,7 @@ export async function POST(request: NextRequest) {
   });
   // Do not promote an existing browser cookie; install only the backend-verified
   // bearer session supplied in this request, replacing any previous session id.
-  response.cookies.set(buildSessionCookieOptions(accessToken));
+  setVerifiedSessionCookie(response, accessToken);
   return response;
 }
 
@@ -292,6 +342,6 @@ export async function DELETE(request: NextRequest) {
   }
 
   const response = NextResponse.json(sessionJson(null), { headers: NO_STORE_HEADERS });
-  response.cookies.set(buildExpiredSessionCookieOptions());
+  setExpiredSessionCookie(response);
   return response;
 }

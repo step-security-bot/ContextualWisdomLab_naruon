@@ -1840,6 +1840,16 @@ extract_first_severity_rank() {
 	printf '%s\n' "$rank"
 }
 
+allow_unmapped_pr_scope_finding() {
+	if [ "$TARGET_PATH_REQUESTS_PR_SCOPE" -eq 1 ] &&
+		[ "$TARGET_PATH_IS_INTERNAL_PR_SCOPE" -eq 1 ]; then
+		PR_FINDINGS_DECISION="allow_unmapped_pr_scope"
+		echo "Strix emitted PR-scope findings without mappable source locations; treating them as diagnostic because no changed-file intersection can be established." >&2
+		return 0
+	fi
+	return 1
+}
+
 evaluate_pull_request_findings() {
 	PR_FINDINGS_DECISION="not_applicable"
 	if ! is_pull_request_event; then
@@ -1856,6 +1866,7 @@ evaluate_pull_request_findings() {
 	local found_baseline_threshold_finding=0
 	local found_changed_manifest_only_threshold_finding=0
 	local found_retryable_model_inconsistency=0
+	local found_unmapped_pr_scope_finding=0
 	local found_any_vuln_file=0
 	local run_dir vulnerabilities_dir vuln_file line severity rank
 	for run_dir in "$STRIX_REPORTS_DIR"/*; do
@@ -1889,6 +1900,10 @@ evaluate_pull_request_findings() {
 			fi
 			mapfile -t vulnerability_locations < <(extract_vulnerability_locations "$vuln_file")
 			if [ "${#vulnerability_locations[@]}" -eq 0 ]; then
+				if allow_unmapped_pr_scope_finding; then
+					found_unmapped_pr_scope_finding=1
+					continue
+				fi
 				PR_FINDINGS_DECISION="block_unmapped"
 				echo "Unable to map Strix findings to changed files; failing closed for pull request." >&2
 				return 1
@@ -1934,16 +1949,26 @@ evaluate_pull_request_findings() {
 				PR_FINDINGS_DECISION="retry_model_inconsistency"
 				return 1
 			fi
+			if [ "$found_unmapped_pr_scope_finding" -eq 1 ]; then
+				PR_FINDINGS_DECISION="allow_unmapped_pr_scope"
+				return 0
+			fi
 			return 1
 		fi
 		if [ "$rank" -ge "$threshold_rank" ]; then
 			mapfile -t vulnerability_locations < <(extract_vulnerability_locations "$STRIX_LOG")
 			if [ "${#vulnerability_locations[@]}" -eq 0 ]; then
-				PR_FINDINGS_DECISION="block_unmapped"
-				echo "Unable to map Strix findings to changed files; failing closed for pull request." >&2
-				return 1
+				if allow_unmapped_pr_scope_finding; then
+					found_unmapped_pr_scope_finding=1
+				else
+					PR_FINDINGS_DECISION="block_unmapped"
+					echo "Unable to map Strix findings to changed files; failing closed for pull request." >&2
+					return 1
+				fi
 			fi
-			if all_vulnerability_locations_are_dependency_manifests "${vulnerability_locations[@]}"; then
+			if [ "${#vulnerability_locations[@]}" -eq 0 ]; then
+				:
+			elif all_vulnerability_locations_are_dependency_manifests "${vulnerability_locations[@]}"; then
 				local manifest_location changed_file manifest_location_changed=0
 				for manifest_location in "${vulnerability_locations[@]}"; do
 					for changed_file in "${CHANGED_FILES[@]}"; do
@@ -1975,6 +2000,14 @@ evaluate_pull_request_findings() {
 				done
 			fi
 		fi
+	fi
+
+	if [ "$found_baseline_threshold_finding" -eq 0 ] &&
+		[ "$found_changed_manifest_only_threshold_finding" -eq 0 ] &&
+		[ "$found_retryable_model_inconsistency" -eq 0 ] &&
+		[ "$found_unmapped_pr_scope_finding" -eq 1 ]; then
+		PR_FINDINGS_DECISION="allow_unmapped_pr_scope"
+		return 0
 	fi
 
 	if [ "$found_baseline_threshold_finding" -eq 0 ] && [ "$found_changed_manifest_only_threshold_finding" -eq 0 ] && [ "$found_retryable_model_inconsistency" -eq 1 ]; then

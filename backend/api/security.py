@@ -13,6 +13,7 @@ from api.auth import (
     get_auth_context,
     is_admin_role,
 )
+from api.common.scopes import connector_scope_statement
 from db.models import (
     CalendarWritebackSource,
     ConnectorSignalEvent,
@@ -175,20 +176,6 @@ def _calendar_scope_statement(auth_context: AuthContext):
     return statement.where(
         CalendarWritebackSource.user_id == auth_context.user_id,
         organization_filter,
-    )
-
-
-def _connector_scope_statement(auth_context: AuthContext):
-    if auth_context.organization_id is None:
-        return None
-    return (
-        select(ConnectorSignalEvent)
-        .where(
-            ConnectorSignalEvent.organization_id == auth_context.organization_id,
-            ConnectorSignalEvent.workspace_id == auth_context.workspace_id,
-        )
-        .order_by(ConnectorSignalEvent.observed_at.desc())
-        .limit(8)
     )
 
 
@@ -453,7 +440,7 @@ async def get_access_surface(
     webdav_result = await db.execute(_webdav_scope_statement(auth_context))
     calendar_result = await db.execute(_calendar_scope_statement(auth_context))
     audit_result = await db.execute(_durable_audit_scope_statement(auth_context))
-    connector_statement = _connector_scope_statement(auth_context)
+    connector_statement = connector_scope_statement(auth_context)
     connector_events: list[ConnectorSignalEvent] = []
     if connector_statement is not None:
         connector_result = await db.execute(connector_statement)

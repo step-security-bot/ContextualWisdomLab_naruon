@@ -26,6 +26,7 @@ GOOGLE_OAUTH_REQUIRED_KEYS = {
     "refresh_token",
     "token_uri",
 }
+GOOGLE_CALENDAR_BATCH_MAX_REQUESTS = 50
 
 
 def build(*args, **kwargs):
@@ -105,3 +106,67 @@ async def create_calendar_event(todo_text: str, user_token: dict) -> dict:
         raise
     except Exception as e:
         raise CalendarServiceError("Failed to create event") from e
+
+
+async def _execute_calendar_event_batch(
+    service,
+    safe_todo_texts: list[str],
+    now: datetime.datetime,
+) -> list[dict]:
+    results: list[dict | None] = [None] * len(safe_todo_texts)
+    exceptions: list[Exception | None] = [None] * len(safe_todo_texts)
+
+    def callback(request_id, response, exception):
+        idx = int(request_id)
+        if exception is not None:
+            exceptions[idx] = exception
+            return
+        results[idx] = response
+
+    batch = service.new_batch_http_request(callback=callback)
+    for idx, safe_todo_text in enumerate(safe_todo_texts):
+        event = {
+            "summary": safe_todo_text,
+            "start": {"dateTime": now.isoformat()},
+            "end": {"dateTime": (now + datetime.timedelta(hours=1)).isoformat()},
+        }
+        request = service.events().insert(calendarId="primary", body=event)
+        batch.add(request, request_id=str(idx))
+
+    await asyncio.to_thread(batch.execute)
+
+    for exc in exceptions:
+        if exc is not None:
+            raise CalendarServiceError("Failed to create event in batch") from exc
+
+    created_events: list[dict] = []
+    for result in results:
+        if result is None:
+            raise CalendarServiceError("Failed to create event in batch")
+        created_events.append(result)
+    return created_events
+
+
+async def create_calendar_events_batch(todo_texts: list[str], user_token: dict) -> list[dict]:
+    """Creates calendar events for TODO text in bounded Google batch requests."""
+    if not todo_texts:
+        return []
+
+    try:
+        safe_todo_texts = [validate_calendar_todo_text(todo_text) for todo_text in todo_texts]
+        validated_user_token = validate_google_user_token(user_token)
+        creds = _google_credentials(validated_user_token)
+        service = build("calendar", "v3", credentials=creds)
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        created_events: list[dict] = []
+        for start in range(0, len(safe_todo_texts), GOOGLE_CALENDAR_BATCH_MAX_REQUESTS):
+            chunk = safe_todo_texts[start : start + GOOGLE_CALENDAR_BATCH_MAX_REQUESTS]
+            created_events.extend(await _execute_calendar_event_batch(service, chunk, now))
+        return created_events
+    except UnsafeCalendarTodoError:
+        raise
+    except CalendarServiceError:
+        raise
+    except Exception as e:
+        raise CalendarServiceError("Failed to create events in batch") from e

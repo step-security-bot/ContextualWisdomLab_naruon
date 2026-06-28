@@ -360,10 +360,10 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
         { overdue_hours: 48 },
       );
       setReplySlaStatus('ready');
-      setReplySlaMessage(`${result.created}개 SLA 티켓 생성, ${result.evaluated}개 답변 대기 확인`);
+      setReplySlaMessage(`${result.created}개 팔로업 작업 생성, ${result.evaluated}개 답변 대기 확인`);
     } catch {
       setReplySlaStatus('error');
-      setReplySlaMessage('답변 SLA 티켓 생성 실패');
+      setReplySlaMessage('미답변 팔로업 작업 생성 실패');
     }
   };
 
@@ -436,12 +436,13 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
                   <a href="/mail?folder=sent" className="inline-flex text-xs font-semibold text-primary hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">보낸 메일 보기</a>
                   <button
                     type="button"
-                    aria-label="홈에서 보낸 메일 답변 SLA 티켓 생성"
+                    aria-label="홈에서 보낸 메일 미답변 팔로업 작업 생성"
                     disabled={loading || pendingReplyCount === 0 || replySlaStatus === 'loading'}
+                    aria-busy={loading || replySlaStatus === 'loading'}
                     onClick={() => void handleReplySlaEscalation()}
                     className="text-xs font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
-                    {replySlaStatus === 'loading' ? 'SLA 확인 중' : 'SLA 티켓 생성'}
+                    {replySlaStatus === 'loading' ? '확인 중' : '팔로업 작업 생성'}
                   </button>
                 </div>
                 {replySlaMessage ? (
@@ -966,7 +967,7 @@ export function WorkspaceHome({
           </section>
           <section
             id="mobile-actions"
-            aria-label="모바일 AI 실행"
+            aria-label="모바일 판단 보조 실행"
             role="region"
             className={`mobile-workspace-panel mobile-workspace-panel-actions h-full ${effectiveMobileView === 'actions' ? 'flex' : 'hidden'} flex-col overflow-y-auto bg-gradient-to-b from-primary/5 via-background to-emerald-500/5 p-4 pb-[calc(7rem+env(safe-area-inset-bottom))]`}
           >
