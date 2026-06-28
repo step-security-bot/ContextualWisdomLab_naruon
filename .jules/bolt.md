@@ -81,3 +81,7 @@
 ## 2026-06-24 - Defer large SQLAlchemy vector payloads
 **Learning:** Mapping large `Vector(1536)` embedding columns as eager default loads inflates row payloads and network transfer for routine list/detail queries that do not need the vector values.
 **Action:** Mark large embedding columns with `deferred=True` when callers rarely need them by default, and use explicit undefer/loading options only in code paths that intentionally consume embeddings. Avoid describing this as an N+1 fix; deferred columns can create extra SELECTs if accessed later in a loop.
+
+## 2024-06-25 - Delay expensive string operations before case-sensitive lookup
+**Learning:** Checking for single characters (like "?") on the original string is significantly faster than first converting a potentially massive email body to lowercase, especially if the "?" condition matches early and the lowercasing can be bypassed entirely.
+**Action:** Always check the cheapest substring/character matches before applying string transformations like `.lower()` on large blocks of text.
