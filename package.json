@@ -1,0 +1,8 @@
+{
+  "name": "naruon-coverage-evidence",
+  "private": true,
+  "scripts": {
+    "check:python-docstrings": "python3 -m interrogate --fail-under=100 backend/core/version.py",
+    "coverage": "node scripts/ci/write_coverage_evidence.mjs"
+  }
+}

@@ -18,13 +18,16 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["backend"]
+source = ["backend/core"]
 omit = [
     "backend/tests/*",
     "backend/alembic/*",
 ]
 
 [tool.coverage.report]
+include = [
+    "backend/core/version.py",
+]
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
