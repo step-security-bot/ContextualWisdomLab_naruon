@@ -1,0 +1,11 @@
+--- backend/tests/test_auth_real.py
++++ backend/tests/test_auth_real.py
+@@ -995,8 +995,8 @@
+     decode_called = False
+
+     def mock_jwt_decode(*args, **kwargs):
+         nonlocal decode_called
+         decode_called = True
+         return {}
+
+     monkeypatch.setattr(jwt, "decode", mock_jwt_decode)

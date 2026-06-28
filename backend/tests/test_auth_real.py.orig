@@ -632,6 +632,7 @@ async def test_hmac_session_rejects_admin_role_claim(admin_role: str):
         await get_auth_context(authorization=f"Bearer {token}")
 
     assert exc.value.status_code == 401
+    assert decode_called is False
 
 
 @pytest.mark.asyncio
@@ -1013,6 +1014,7 @@ async def test_oidc_rejects_non_rs256_algorithm_before_decode(monkeypatch):
         settings.AUTH_SESSION_HMAC_SECRET = previous_secret
 
     assert exc.value.status_code == 401
+    assert decode_called is False
 
 
 @pytest.mark.asyncio
