@@ -214,6 +214,69 @@ async def _release_owner_import_quota_lock(
     )
 
 
+async def _extract_and_generate_embeddings(
+    parsed: EmailData,
+    embedding_provider: EmailImportEmbeddingProvider | None,
+) -> tuple[list[dict], list[list[float]]]:
+    attachment_payloads = list(parsed.get("attachments", []))
+    embedding_texts = [str(parsed.get("body") or "")]
+    embedding_texts.extend(
+        str(attachment.get("content") or "") for attachment in attachment_payloads
+    )
+    fitted_embeddings = await _generate_import_embeddings(
+        embedding_texts,
+        embedding_provider=embedding_provider,
+    )
+    return attachment_payloads, fitted_embeddings
+
+
+def _build_email_object(
+    *,
+    parsed: EmailData,
+    user_id: str,
+    organization_id: str,
+    message_id: str,
+    thread_id: str | None,
+    fingerprint: str,
+    persisted_date: datetime.datetime,
+    attachment_payloads: list[dict],
+    fitted_embeddings: list[list[float]],
+) -> tuple[Email, int]:
+    email_obj = Email(
+        user_id=user_id,
+        organization_id=organization_id,
+        message_id=message_id,
+        thread_id=thread_id,
+        fingerprint=fingerprint,
+        sender=parsed.get("sender", ""),
+        reply_to=parsed.get("reply_to"),
+        recipients=parsed.get("recipients"),
+        subject=parsed.get("subject"),
+        in_reply_to=parsed.get("in_reply_to"),
+        references=parsed.get("references"),
+        date=persisted_date,
+        body=parsed.get("body", ""),
+        embedding=fitted_embeddings[0] if fitted_embeddings else _zero_embedding(),
+    )
+
+    attachment_count = 0
+    for attachment_index, attachment in enumerate(attachment_payloads, start=1):
+        email_obj.attachments.append(
+            Attachment(
+                filename=str(attachment.get("filename") or "attachment.txt"),
+                content=str(attachment.get("content") or ""),
+                embedding=(
+                    fitted_embeddings[attachment_index]
+                    if attachment_index < len(fitted_embeddings)
+                    else _zero_embedding()
+                ),
+            )
+        )
+        attachment_count += 1
+
+    return email_obj, attachment_count
+
+
 async def _import_single_eml(
     session: AsyncSession,
     *,
@@ -257,46 +320,22 @@ async def _import_single_eml(
         user_id=user_id,
         organization_id=organization_id,
     )
-    attachment_payloads = list(parsed.get("attachments", []))
-    embedding_texts = [str(parsed.get("body") or "")]
-    embedding_texts.extend(
-        str(attachment.get("content") or "") for attachment in attachment_payloads
+
+    attachment_payloads, fitted_embeddings = await _extract_and_generate_embeddings(
+        parsed, embedding_provider
     )
-    fitted_embeddings = await _generate_import_embeddings(
-        embedding_texts,
-        embedding_provider=embedding_provider,
-    )
-    email_obj = Email(
+
+    email_obj, attachment_count = _build_email_object(
+        parsed=parsed,
         user_id=user_id,
         organization_id=organization_id,
         message_id=message_id,
         thread_id=thread_id,
         fingerprint=fingerprint,
-        sender=parsed.get("sender", ""),
-        reply_to=parsed.get("reply_to"),
-        recipients=parsed.get("recipients"),
-        subject=parsed.get("subject"),
-        in_reply_to=parsed.get("in_reply_to"),
-        references=parsed.get("references"),
-        date=persisted_date,
-        body=parsed.get("body", ""),
-        embedding=fitted_embeddings[0] if fitted_embeddings else _zero_embedding(),
+        persisted_date=persisted_date,
+        attachment_payloads=attachment_payloads,
+        fitted_embeddings=fitted_embeddings,
     )
-
-    attachment_count = 0
-    for attachment_index, attachment in enumerate(attachment_payloads, start=1):
-        email_obj.attachments.append(
-            Attachment(
-                filename=str(attachment.get("filename") or "attachment.txt"),
-                content=str(attachment.get("content") or ""),
-                embedding=(
-                    fitted_embeddings[attachment_index]
-                    if attachment_index < len(fitted_embeddings)
-                    else _zero_embedding()
-                ),
-            )
-        )
-        attachment_count += 1
 
     session.add(email_obj)
     try:
