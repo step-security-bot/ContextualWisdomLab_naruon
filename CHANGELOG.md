@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### 성능 개선
+
+- `ImapSyncWorker`에서 `TenantConfig` 로드 시 발생할 수 있는 N+1 Lazy Loading 문제를 방지하기 위해 `selectinload('*')` 옵션을 쿼리에 추가했습니다.
+
 ## [0.14.4] - 2026-06-18
 
 ### 추가
@@ -2582,3 +2586,13 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+### 성능 개선
+
+- `ImapSyncWorker`에서 `TenantConfig` 로드 시 발생할 수 있는 N+1 Lazy Loading 문제를 방지하기 위해 `selectinload('*')` 옵션을 쿼리에 추가했습니다.
+
+### 성능 개선
+
+- `ImapSyncWorker`에서 `TenantConfig` 로드 시 발생할 수 있는 N+1 Lazy Loading 문제를 방지하기 위해 `selectinload('*')` 옵션을 쿼리에 추가했습니다.

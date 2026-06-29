@@ -5,19 +5,19 @@ from collections.abc import Iterable
 
 import aioimaplib
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from db.models import Email, TenantConfig
 from db.session import AsyncSessionLocal
-from services.email_parser import EmailData
+from services.email_client import validate_imap_destination
+from services.email_dedupe_service import strong_email_fingerprint
+from services.email_parser import EmailData, parse_eml_bytes
+from services.exceptions import EmailParseError
 from services.knowledge_extractor import (
     extract_knowledge_from_self_sent,
     is_self_sent_email,
 )
-from services.email_client import validate_imap_destination
-from services.email_parser import parse_eml_bytes
-from services.exceptions import EmailParseError
 from services.threading_service import assign_thread_id, generate_email_fingerprint
-from services.email_dedupe_service import strong_email_fingerprint
 
 
 async def process_fetched_email(
@@ -145,7 +145,7 @@ class ImapSyncWorker:
 
     async def _sync(self):
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(TenantConfig).where(TenantConfig.imap_server.isnot(None)))
+            result = await session.execute(select(TenantConfig).options(selectinload('*')).where(TenantConfig.imap_server.isnot(None)))
             configs = result.scalars().all()
             
         tasks = []
