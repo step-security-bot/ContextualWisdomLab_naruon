@@ -1,5 +1,5 @@
 import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -43,12 +43,13 @@ def test_configured_email_addresses():
 @pytest.mark.asyncio
 async def test_check_missing_replies_no_config():
     session = AsyncMock()
-    # Mock get_scoped_tenant_config to return None
-    import services.reply_tracking_service as sut
 
-    sut.get_scoped_tenant_config = AsyncMock(return_value=None)
+    with patch(
+        "services.reply_tracking_service.get_scoped_tenant_config",
+        AsyncMock(return_value=None),
+    ):
+        result = await check_missing_replies(session, "user1", "org1")
 
-    result = await check_missing_replies(session, "user1", "org1")
     assert result == []
 
 
@@ -59,10 +60,6 @@ async def test_check_missing_replies_with_config():
     class DummyConfig:
         smtp_username = "user@example.com"
         imap_username = None
-
-    import services.reply_tracking_service as sut
-
-    sut.get_scoped_tenant_config = AsyncMock(return_value=DummyConfig())
 
     mock_result = MagicMock()
 
@@ -83,7 +80,12 @@ async def test_check_missing_replies_with_config():
     mock_result.scalars.return_value.all.return_value = [email1]
     session.execute.return_value = mock_result
 
-    result = await check_missing_replies(session, "user1", "org1")
+    with patch(
+        "services.reply_tracking_service.get_scoped_tenant_config",
+        AsyncMock(return_value=DummyConfig()),
+    ):
+        result = await check_missing_replies(session, "user1", "org1")
+
     assert len(result) == 1
     assert result[0].message_id == "msg1"
 
