@@ -2,6 +2,7 @@ import defusedxml.ElementTree as ET
 from contextlib import contextmanager
 from urllib.parse import unquote
 
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from api.auth import get_auth_context
