@@ -1,10 +1,12 @@
 import datetime
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
+
 from db.models import LLMProvider
-from main import app
 from db.session import get_db, get_readonly_db
+from main import app
 from services.exceptions import EmbeddingGenerationError
 from services.llm_provider_selection import LOCAL_PROVIDER_API_KEY
 
@@ -284,8 +286,7 @@ def test_search_uses_primary_config_session_and_readonly_search_session(
         "llm_providers" in str(stmt).lower() for stmt in config_session.statements
     )
     assert all(
-        "combined_search" not in str(stmt).lower()
-        for stmt in config_session.statements
+        "combined_search" not in str(stmt).lower() for stmt in config_session.statements
     )
     assert "combined_search" in str(search_session.statements[-1]).lower()
 
@@ -315,3 +316,21 @@ def test_search_pads_local_embedding_dimension_for_vector_search(
     query_text = str(session.statements[-1]).lower()
     assert "ts_rank_cd" in query_text
     assert "<=>" in query_text
+
+
+def test_thread_group_key_behavior():
+    from sqlalchemy.dialects import postgresql
+
+    from api.search import thread_group_key
+
+    key_expr = thread_group_key()
+    compiled_sql = str(
+        key_expr.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).lower()
+
+    assert (
+        "coalesce(nullif(btrim(btrim(email_records.thread_id), '<>'), ''), nullif(btrim(btrim(email_records.message_id), '<>'), ''))"
+        in compiled_sql
+    )

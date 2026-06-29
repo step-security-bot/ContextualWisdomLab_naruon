@@ -2582,3 +2582,8 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+### 테스트 (Testing)
+- `backend/api/search.py`의 `thread_group_key` 함수에 대한 단위 테스트 추가. SQL 표현식이 `coalesce` 및 `btrim`을 사용하여 올바르게 생성되는지 검증 (`backend/tests/test_search.py`).
