@@ -4,20 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from db.models import Email
-from services.reply_tracking_service import (
-    _parse_multiple_addresses,
-    check_missing_replies,
-    configured_email_addresses,
-    detect_reply_tracking,
-    message_is_from_user,
-    reply_tracking_thread_key,
-    thread_reply_candidate,
-)
+import services.reply_tracking_service as sut
 
 
 def test_parse_multiple_addresses_empty():
-    assert _parse_multiple_addresses("") == frozenset()
-    assert _parse_multiple_addresses(None) == frozenset()
+    assert sut._parse_multiple_addresses("") == frozenset()
+    assert sut._parse_multiple_addresses(None) == frozenset()
 
 
 def test_message_is_from_user_empty():
@@ -25,17 +17,17 @@ def test_message_is_from_user_empty():
         sender = "test@example.com"
         recipients = ""
 
-    assert message_is_from_user(DummyEmail(), set()) is False
+    assert sut.message_is_from_user(DummyEmail(), set()) is False
 
 
 def test_configured_email_addresses():
-    assert configured_email_addresses(None) == set()
+    assert sut.configured_email_addresses(None) == set()
 
     class DummyConfig:
         smtp_username = "test@example.com"
         imap_username = "Other <test2@example.com>"
 
-    addresses = configured_email_addresses(DummyConfig())
+    addresses = sut.configured_email_addresses(DummyConfig())
     assert "test@example.com" in addresses
     assert "test2@example.com" in addresses
 
@@ -43,12 +35,9 @@ def test_configured_email_addresses():
 @pytest.mark.asyncio
 async def test_check_missing_replies_no_config():
     session = AsyncMock()
-    # Mock get_scoped_tenant_config to return None
-    import services.reply_tracking_service as sut
-
     sut.get_scoped_tenant_config = AsyncMock(return_value=None)
 
-    result = await check_missing_replies(session, "user1", "org1")
+    result = await sut.check_missing_replies(session, "user1", "org1")
     assert result == []
 
 
@@ -59,8 +48,6 @@ async def test_check_missing_replies_with_config():
     class DummyConfig:
         smtp_username = "user@example.com"
         imap_username = None
-
-    import services.reply_tracking_service as sut
 
     sut.get_scoped_tenant_config = AsyncMock(return_value=DummyConfig())
 
@@ -83,7 +70,7 @@ async def test_check_missing_replies_with_config():
     mock_result.scalars.return_value.all.return_value = [email1]
     session.execute.return_value = mock_result
 
-    result = await check_missing_replies(session, "user1", "org1")
+    result = await sut.check_missing_replies(session, "user1", "org1")
     assert len(result) == 1
     assert result[0].message_id == "msg1"
 
@@ -93,11 +80,11 @@ def test_reply_tracking_thread_key_fallback():
         thread_id = None
         message_id = "msg1"
 
-    assert reply_tracking_thread_key(DummyEmail()) == "msg1"
+    assert sut.reply_tracking_thread_key(DummyEmail()) == "msg1"
 
 
 def test_detect_reply_tracking_no_body():
-    assert detect_reply_tracking(None) is False
+    assert sut.detect_reply_tracking(None) is False
 
 
 def test_thread_reply_candidate_external_latest():
@@ -119,7 +106,7 @@ def test_thread_reply_candidate_external_latest():
         "please reply",
     )
 
-    assert thread_reply_candidate([e1, e2], {"test@example.com"}) is None
+    assert sut.thread_reply_candidate([e1, e2], {"test@example.com"}) is None
 
 
 def test_configured_email_addresses_empty_username():
@@ -127,7 +114,7 @@ def test_configured_email_addresses_empty_username():
         smtp_username = ""
         imap_username = ""
 
-    addresses = configured_email_addresses(DummyConfig())
+    addresses = sut.configured_email_addresses(DummyConfig())
     assert len(addresses) == 0
 
 
@@ -136,5 +123,5 @@ def test_configured_email_addresses_invalid_username():
         smtp_username = "invalid_address"
         imap_username = ""
 
-    addresses = configured_email_addresses(DummyConfig())
+    addresses = sut.configured_email_addresses(DummyConfig())
     assert len(addresses) == 1
