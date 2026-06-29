@@ -43,7 +43,7 @@ async def test_reply_sla_scheduler_escalates_configured_mailbox_owners(monkeypat
     session = MockSession()
 
     async def fake_create_reply_sla_escalation_tasks(
-        db, *, user_id, organization_id, overdue_hours, limit
+        db, *, user_id, organization_id, overdue_hours, limit, **kwargs
     ):
         calls.append(
             {
@@ -114,7 +114,7 @@ async def test_reply_sla_scheduler_continues_after_owner_escalation_failure(
             return MockResult()
 
     async def fake_create_reply_sla_escalation_tasks(
-        db, *, user_id, organization_id, overdue_hours, limit
+        db, *, user_id, organization_id, overdue_hours, limit, **kwargs
     ):
         calls.append(user_id)
         if user_id == "alice":

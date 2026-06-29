@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Email, TicketTask
+from db.models import Email, TenantConfig, TicketTask
 from services.reply_tracking_service import check_missing_replies
 from services.text_safety import contains_html_markup
 from services.threading_service import normalize_message_id
@@ -58,10 +58,7 @@ def _email_date_utc(email: Email) -> datetime.datetime:
 
 
 async def _fetch_existing_tasks_by_email(
-    db: AsyncSession,
-    user_id: str,
-    organization_id: str | None,
-    email_ids: list[int]
+    db: AsyncSession, user_id: str, organization_id: str | None, email_ids: list[int]
 ) -> dict[int, TicketTask]:
     result = await db.execute(
         select(TicketTask)
@@ -111,7 +108,7 @@ async def _refresh_escalated_tasks(
     user_id: str,
     organization_id: str | None,
     email_ids: list[int],
-    escalated_tasks: list[tuple[TicketTask, str | None]]
+    escalated_tasks: list[tuple[TicketTask, str | None]],
 ) -> None:
     refreshed_tasks_by_email = await _fetch_existing_tasks_by_email(
         db, user_id, organization_id, email_ids
@@ -229,9 +226,7 @@ async def _process_fallback_escalation(
             fallback_entries[index] = (email, task)
 
     escalated_tasks.extend(
-        (task, email.message_id)
-        for email, task in fallback_entries
-        if task is not None
+        (task, email.message_id) for email, task in fallback_entries if task is not None
     )
 
     if created_count > 0 or any(t.status != "done" for t, _ in escalated_tasks):
@@ -250,8 +245,11 @@ async def create_reply_sla_escalation_tasks(
     organization_id: str | None,
     overdue_hours: int,
     limit: int,
+    tenant_config: TenantConfig | None = None,
 ) -> ReplySlaEscalationResult:
-    pending_replies = await check_missing_replies(db, user_id, organization_id)
+    pending_replies = await check_missing_replies(
+        db, user_id, organization_id, tenant_config
+    )
     now = datetime.datetime.now(datetime.timezone.utc)
     overdue_cutoff = now - datetime.timedelta(hours=overdue_hours)
     overdue_replies = sorted(

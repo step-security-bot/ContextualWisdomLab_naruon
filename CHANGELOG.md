@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### 성능 향상 (Performance)
+
+- **Reply SLA Scheduler N+1 쿼리 최적화**: `ReplySlaScheduler._sync` 에서 조회한 `TenantConfig` 객체를 하위 함수인 `create_reply_sla_escalation_tasks` 및 `check_missing_replies` 로 전달하여 각 테넌트마다 중복으로 발생하는 DB 쿼리를 제거했습니다. 이로 인해 불필요한 데이터베이스 부하가 감소하고 응답 지연 후속 조치 생성 스케줄러의 처리 속도가 개선되었습니다.
+
 ## [0.14.4] - 2026-06-18
 
 ### 추가

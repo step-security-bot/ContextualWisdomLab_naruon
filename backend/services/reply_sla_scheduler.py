@@ -87,6 +87,7 @@ class ReplySlaScheduler:
                         organization_id=config.organization_id,
                         overdue_hours=self.overdue_hours,
                         limit=self.limit,
+                        tenant_config=config,
                     )
                 )
 

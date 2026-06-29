@@ -1,14 +1,15 @@
-import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from db.models import Email, TenantConfig
-from services.tenant_config_scope import get_scoped_tenant_config
-
-from services.threading_service import normalize_message_id
 import datetime
 import email.utils as email_utils
-from functools import lru_cache
+import logging
 from collections import defaultdict
+from functools import lru_cache
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.models import Email, TenantConfig
+from services.tenant_config_scope import get_scoped_tenant_config
+from services.threading_service import normalize_message_id
 
 logger = logging.getLogger(__name__)
 
@@ -112,18 +113,24 @@ def thread_requires_reply(
 
 
 async def check_missing_replies(
-    session: AsyncSession, user_id: str, organization_id: str | None
+    session: AsyncSession,
+    user_id: str,
+    organization_id: str | None,
+    tenant_config: TenantConfig | None = None,
 ) -> list[Email]:
     """
     Checks for sent emails that expect a reply but haven't received one.
     Returns a list of such emails.
     """
     # Find user's own email address
-    config = await get_scoped_tenant_config(
-        session,
-        user_id,
-        organization_id,
-    )
+    if tenant_config is None:
+        config = await get_scoped_tenant_config(
+            session,
+            user_id,
+            organization_id,
+        )
+    else:
+        config = tenant_config
     user_addresses = configured_email_addresses(config)
 
     if not user_addresses:
