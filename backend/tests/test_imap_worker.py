@@ -1,6 +1,10 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+
 from db.models import TenantConfig
 from services.imap_worker import ImapSyncWorker
+
 
 @pytest.mark.asyncio
 async def test_imap_worker_skips_disallowed_destination(monkeypatch):
@@ -32,11 +36,9 @@ async def test_imap_worker_sync_tenant_raises_when_connection_fails(monkeypatch)
         imap_port=993,
     )
 
-    class FailingImapClient:
-        protocol = None
-
-        async def wait_hello_from_server(self):
-            raise RuntimeError("connect failed")
+    imap_client = AsyncMock()
+    imap_client.protocol = None
+    imap_client.wait_hello_from_server.side_effect = RuntimeError("connect failed")
 
     monkeypatch.setattr(
         "services.imap_worker.validate_imap_destination",
@@ -44,7 +46,7 @@ async def test_imap_worker_sync_tenant_raises_when_connection_fails(monkeypatch)
     )
     monkeypatch.setattr(
         "services.imap_worker.aioimaplib.IMAP4_SSL",
-        lambda host, port, **kwargs: FailingImapClient(),
+        lambda host, port, **kwargs: imap_client,
     )
 
     with pytest.raises(Exception, match="IMAP Sync failed for user testuser"):
@@ -72,70 +74,23 @@ async def test_imap_worker_imports_fetched_rfc822_messages(monkeypatch):
         b"Imported from IMAP.\r\n"
     )
 
-    class FakeImapClient:
-        protocol = object()
+    imap_client = AsyncMock()
+    imap_client.protocol = object()
+    imap_client.wait_hello_from_server.return_value = None
+    imap_client.login.return_value = ("OK", [b"logged in"])
+    imap_client.select.return_value = ("OK", [b"selected"])
+    imap_client.search.return_value = ("OK", [b"1"])
+    imap_client.fetch.return_value = (
+        "OK",
+        [(b"1 (RFC822 {%d}" % len(raw_message), raw_message)],
+    )
+    imap_client.logout.return_value = None
 
-        def __init__(self):
-            self.fetch_calls = []
-            self.logged_out = False
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = False
 
-        async def wait_hello_from_server(self):
-            return None
-
-        async def login(self, username, secret):
-            assert username == "imap-user@example.com"
-            assert secret == "imap-secret"
-            return "OK", [b"logged in"]
-
-        async def select(self, mailbox):
-            assert mailbox == "INBOX"
-            return "OK", [b"selected"]
-
-        async def search(self, criteria):
-            assert criteria == "ALL"
-            return "OK", [b"1"]
-
-        async def fetch(self, message_number, query):
-            self.fetch_calls.append((message_number, query))
-            return "OK", [(b"1 (RFC822 {%d}" % len(raw_message), raw_message)]
-
-        async def logout(self):
-            self.logged_out = True
-
-    imap_client = FakeImapClient()
-    imported = []
-
-    class FakeSession:
-        def __init__(self):
-            self.committed = False
-            self.rolled_back = False
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def commit(self):
-            self.committed = True
-
-        async def rollback(self):
-            self.rolled_back = True
-
-    session = FakeSession()
-
-    async def fake_process_fetched_email(
-        db_session, email_data, user_id, organization_id, owner_addresses=None
-    ):
-        imported.append(
-            {
-                "session": db_session,
-                "email_data": email_data,
-                "user_id": user_id,
-                "organization_id": organization_id,
-                "owner_addresses": owner_addresses,
-            }
-        )
+    process_fetched_email_mock = AsyncMock()
 
     monkeypatch.setattr(
         "services.imap_worker.validate_imap_destination",
@@ -148,24 +103,30 @@ async def test_imap_worker_imports_fetched_rfc822_messages(monkeypatch):
     monkeypatch.setattr("services.imap_worker.AsyncSessionLocal", lambda: session)
     monkeypatch.setattr(
         "services.imap_worker.process_fetched_email",
-        fake_process_fetched_email,
-        raising=False,
+        process_fetched_email_mock,
     )
 
     imported_count = await worker._sync_tenant(config)
 
     assert imported_count == 1
-    assert imap_client.fetch_calls == [("1", "(RFC822)")]
-    assert imap_client.logged_out is True
-    assert len(imported) == 1
-    assert imported[0]["session"] is session
-    assert imported[0]["user_id"] == "imap-user"
-    assert imported[0]["organization_id"] == "org-imap"
-    assert imported[0]["owner_addresses"] == ["imap-user@example.com"]
-    assert imported[0]["email_data"]["message_id"] == "<imap-1@example.com>"
-    assert imported[0]["email_data"]["subject"] == "IMAP import"
-    assert session.committed is True
-    assert session.rolled_back is False
+
+    imap_client.login.assert_called_once_with("imap-user@example.com", "imap-secret")
+    imap_client.select.assert_called_once_with("INBOX")
+    imap_client.search.assert_called_once_with("ALL")
+    imap_client.fetch.assert_called_once_with("1", "(RFC822)")
+    imap_client.logout.assert_called_once()
+
+    process_fetched_email_mock.assert_called_once()
+    args, kwargs = process_fetched_email_mock.call_args
+    assert args[0] is session
+    assert args[1]["message_id"] == "<imap-1@example.com>"
+    assert args[1]["subject"] == "IMAP import"
+    assert args[2] == "imap-user"
+    assert args[3] == "org-imap"
+    assert kwargs["owner_addresses"] == ["imap-user@example.com"]
+
+    session.commit.assert_called_once()
+    session.rollback.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -179,14 +140,10 @@ async def test_imap_worker_requires_credentials_without_sensitive_log_names(
         imap_port=993,
     )
 
-    class FakeImapClient:
-        protocol = object()
-
-        async def wait_hello_from_server(self):
-            return None
-
-        async def logout(self):
-            return None
+    imap_client = AsyncMock()
+    imap_client.protocol = object()
+    imap_client.wait_hello_from_server.return_value = None
+    imap_client.logout.return_value = None
 
     monkeypatch.setattr(
         "services.imap_worker.validate_imap_destination",
@@ -194,7 +151,7 @@ async def test_imap_worker_requires_credentials_without_sensitive_log_names(
     )
     monkeypatch.setattr(
         "services.imap_worker.aioimaplib.IMAP4_SSL",
-        lambda host, port, **kwargs: FakeImapClient(),
+        lambda host, port, **kwargs: imap_client,
     )
 
     with pytest.raises(Exception, match="IMAP Sync failed for user imap-user"):

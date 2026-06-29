@@ -2582,3 +2582,6 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+### Fixed
+- `backend/tests/test_imap_worker.py`의 복잡한 커스텀 mock 클래스(`FakeImapClient`, `FakeSession` 등)를 파이썬 기본 `unittest.mock.AsyncMock`으로 대체하여 테스트 코드의 가독성과 유지보수성을 향상시켰습니다.
