@@ -2582,3 +2582,7 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+- Google Calendar 일정 일괄 생성 시 `asyncio.gather()`를 통해 배치 요청을 동시 실행하여 생성 속도 향상 (`calendar_service.py`)

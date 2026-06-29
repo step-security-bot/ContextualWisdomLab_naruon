@@ -147,22 +147,34 @@ async def _execute_calendar_event_batch(
     return created_events
 
 
-async def create_calendar_events_batch(todo_texts: list[str], user_token: dict) -> list[dict]:
+async def create_calendar_events_batch(
+    todo_texts: list[str], user_token: dict
+) -> list[dict]:
     """Creates calendar events for TODO text in bounded Google batch requests."""
     if not todo_texts:
         return []
 
     try:
-        safe_todo_texts = [validate_calendar_todo_text(todo_text) for todo_text in todo_texts]
+        safe_todo_texts = [
+            validate_calendar_todo_text(todo_text) for todo_text in todo_texts
+        ]
         validated_user_token = validate_google_user_token(user_token)
         creds = _google_credentials(validated_user_token)
-        service = build("calendar", "v3", credentials=creds)
         now = datetime.datetime.now(datetime.timezone.utc)
 
-        created_events: list[dict] = []
+        tasks = []
         for start in range(0, len(safe_todo_texts), GOOGLE_CALENDAR_BATCH_MAX_REQUESTS):
             chunk = safe_todo_texts[start : start + GOOGLE_CALENDAR_BATCH_MAX_REQUESTS]
-            created_events.extend(await _execute_calendar_event_batch(service, chunk, now))
+            # google-api-python-client is not thread-safe, so we must create a new
+            # service object for each concurrent batch thread.
+            chunk_service = build("calendar", "v3", credentials=creds)
+            tasks.append(_execute_calendar_event_batch(chunk_service, chunk, now))
+
+        results = await asyncio.gather(*tasks)
+
+        created_events: list[dict] = []
+        for res in results:
+            created_events.extend(res)
         return created_events
     except UnsafeCalendarTodoError:
         raise
