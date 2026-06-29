@@ -1,10 +1,6 @@
 name: OpenCode Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -19,6 +15,10 @@ on:
         description: Pull request base SHA
         required: true
         type: string
+      pr_head_ref:
+        description: Pull request head branch
+        required: false
+        type: string
       pr_head_sha:
         description: Pull request head SHA
         required: true
@@ -32,104 +32,9 @@ permissions:
   contents: read
 
 jobs:
-  opencode-review:
-    if: >-
-      github.event_name == 'pull_request'
-      && github.event.pull_request.draft != true
-      && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - name: Wait for trusted OpenCode approval review
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          APPROVAL_WAIT_ATTEMPTS: "150"
-          APPROVAL_WAIT_SLEEP_SECONDS: "30"
-        run: |
-          set -euo pipefail
-
-          owner="${GH_REPOSITORY%%/*}"
-          name="${GH_REPOSITORY#*/}"
-          attempts="${APPROVAL_WAIT_ATTEMPTS:-150}"
-          sleep_seconds="${APPROVAL_WAIT_SLEEP_SECONDS:-30}"
-
-          read -r -d '' reviews_query <<'GRAPHQL' || true
-          query($owner:String!,$name:String!,$number:Int!) {
-            repository(owner:$owner,name:$name) {
-              pullRequest(number:$number) {
-                reviews(first: 100) {
-                  nodes {
-                    author {
-                      login
-                    }
-                    state
-                    submittedAt
-                    commit {
-                      oid
-                    }
-                  }
-                }
-              }
-            }
-          }
-          GRAPHQL
-
-          for attempt in $(seq 1 "$attempts"); do
-            review_state="$(
-              gh api graphql \
-                -f owner="$owner" \
-                -f name="$name" \
-                -F number="$PR_NUMBER" \
-                -f query="$reviews_query" \
-                --jq '
-                  [
-                    (.data.repository.pullRequest.reviews.nodes // [])
-                    | .[]
-                    | select((.author.login // "") == "opencode-agent" or (.author.login // "") == "opencode-agent[bot]")
-                    | select((.commit.oid // "") == env.HEAD_SHA)
-                  ]
-                  | last
-                  | .state // "MISSING"
-                '
-            )"
-
-            if [ "$review_state" = "APPROVED" ]; then
-              printf 'Trusted OpenCode approval exists for head %s.\n' "$HEAD_SHA"
-              exit 0
-            fi
-
-            if [ "$review_state" = "CHANGES_REQUESTED" ]; then
-              printf 'Trusted OpenCode currently requested changes for head %s (%s/%s); waiting for a same-head rerun or follow-up approval before failing the bridge check.\n' \
-                "$HEAD_SHA" "$attempt" "$attempts"
-            else
-              printf 'Waiting for trusted OpenCode approval for head %s (%s/%s, current=%s).\n' \
-                "$HEAD_SHA" "$attempt" "$attempts" "$review_state"
-            fi
-            if [ "$attempt" -lt "$attempts" ]; then
-              sleep "$sleep_seconds"
-            fi
-          done
-
-          echo "::error::Timed out waiting for a trusted OpenCode approval review on head ${HEAD_SHA}."
-          exit 1
-
   opencode-review-target:
     name: opencode-review
-    if: >-
-      github.event_name == 'workflow_dispatch'
-      || (
-        github.event_name == 'pull_request_target'
-        && github.event.pull_request.draft != true
-        && github.event.pull_request.head.repo.full_name == github.repository
-      )
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -142,13 +47,6 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout trusted review workflow
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
       - name: Checkout trusted review workflow for manual PR review
         if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
