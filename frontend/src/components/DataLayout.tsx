@@ -813,27 +813,42 @@ export function DataLayout() {
                         type="button"
                         onClick={() => void requestDocumentAction('reparse')}
                         disabled={isDocumentActionLoading}
+                        aria-busy={isDocumentActionLoading}
                         className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-foreground hover:bg-secondary disabled:cursor-wait disabled:opacity-60"
                       >
-                        <RefreshCw className="size-4" />
+                        {isDocumentActionLoading ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <RefreshCw className="size-4" />
+                        )}
                         재파싱 실행
                       </button>
                       <button
                         type="button"
                         onClick={() => void requestDocumentAction('embedding-regeneration-intent')}
                         disabled={isDocumentActionLoading}
+                        aria-busy={isDocumentActionLoading}
                         className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-foreground hover:bg-secondary disabled:cursor-wait disabled:opacity-60"
                       >
-                        <Database className="size-4" />
+                        {isDocumentActionLoading ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Database className="size-4" />
+                        )}
                         임베딩 재생성 의도
                       </button>
                       <button
                         type="button"
                         onClick={() => void requestDocumentAction('hwp-conversion-intent')}
                         disabled={isDocumentActionLoading}
+                        aria-busy={isDocumentActionLoading}
                         className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-foreground hover:bg-secondary disabled:cursor-wait disabled:opacity-60"
                       >
-                        <FileText className="size-4" />
+                        {isDocumentActionLoading ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <FileText className="size-4" />
+                        )}
                         HWP 변환 의도
                       </button>
                       <button
@@ -843,7 +858,11 @@ export function DataLayout() {
                         aria-busy={isDocumentActionLoading}
                         className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <Server className="size-4" />
+                        {isDocumentActionLoading ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Server className="size-4" />
+                        )}
                         WebDAV 문서 실행 요청
                       </button>
                     </div>

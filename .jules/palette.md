@@ -55,3 +55,6 @@
 ## 2026-06-21 - Mocking new Lucide icons in tests
 **Learning:** Adding a new icon from `lucide-react` (like `Loader2`) to a component without updating the corresponding test file's `vi.mock("lucide-react", ...)` block causes Vitest to throw a "No export is defined on the lucide-react mock" error.
 **Action:** When adding new `lucide-react` icons, always grep for `vi.mock("lucide-react"` in the `frontend/src/` directory to find and update the relevant test files.
+## $(date +%Y-%m-%d) - DataLayout 버튼에 로딩 상태 및 접근성 개선
+**Learning:** 시간이 걸리는 문서 액션 버튼에 시각적 피드백(로딩 스피너)과 `aria-busy` 속성을 함께 제공하여 접근성과 사용자 경험을 모두 향상시키는 것이 중요합니다.
+**Action:** 비동기 동작을 유발하는 버튼에는 항상 `aria-busy={loading}` 속성과 시각적 인디케이터(Loader 등)를 조건부로 렌더링하도록 적용합니다.
