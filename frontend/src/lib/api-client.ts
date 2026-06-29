@@ -28,6 +28,7 @@ export class ApiClient {
   private getHeaders(init?: RequestInit): HeadersInit {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
       ...this.getSafeCallerHeaders(init?.headers),
     };
     return headers;
@@ -35,6 +36,7 @@ export class ApiClient {
 
   private getFormHeaders(init?: RequestInit): HeadersInit {
     const headers: Record<string, string> = this.getSafeCallerHeaders(init?.headers);
+    headers['X-Requested-With'] = 'XMLHttpRequest';
     Object.keys(headers).forEach((name) => {
       if (name.toLowerCase() === 'content-type') {
         delete headers[name];

@@ -200,6 +200,12 @@ export function DataLayout() {
       return;
     }
 
+    // 50MB file size limit
+    if (file.size > 50 * 1024 * 1024) {
+      setDocumentActionStatus('error');
+      return;
+    }
+
     setDocumentActionStatus('loading');
     setDocumentActionResult(null);
     try {
