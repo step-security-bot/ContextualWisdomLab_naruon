@@ -1,4 +1,5 @@
 ## [Unreleased]
+- `backend/alembic/env.py`에서 불필요한 `__future__` import 제거하여 코드 가독성 및 유지보수성 향상
 
 ## [0.14.4] - 2026-06-18
 
