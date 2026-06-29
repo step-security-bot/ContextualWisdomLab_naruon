@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect, type ChangeEvent } from 'react';
+import { useCallback, useState, useEffect, useMemo, type ChangeEvent } from 'react';
 import { Database, FileText, HardDrive, RefreshCw, FolderOpen, CheckCircle2, Server, Upload, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 
@@ -248,10 +248,10 @@ function getWebdavAccountLabel(account: WebdavAccount, index: number) {
   return label;
 }
 
-function getWritebackTargetLabel(result: WebdavWritebackIntentResponse, accounts: WebdavAccount[]) {
-  const accountIndex = result.source_id ? accounts.findIndex((account) => account.source_id === result.source_id) : -1;
-  if (accountIndex >= 0) {
-    return getWebdavAccountLabel(accounts[accountIndex], accountIndex);
+function getWritebackTargetLabel(result: WebdavWritebackIntentResponse, accountMap: Map<string, { account: WebdavAccount, index: number }>) {
+  const mapped = result.source_id ? accountMap.get(result.source_id) : undefined;
+  if (mapped) {
+    return getWebdavAccountLabel(mapped.account, mapped.index);
   }
 
   const label = result.target_label?.trim();
@@ -304,6 +304,8 @@ export function DataLayout() {
   const [dataSurfaceStatus, setDataSurfaceStatus] = useState<DataSurfaceStatus>('loading');
   const [dataQualitySurface, setDataQualitySurface] = useState<DataQualitySurfaceResponse | null>(null);
   const [selectedRepositoryAssetKey, setSelectedRepositoryAssetKey] = useState<string | null>(null);
+
+  const webdavAccountMap = useMemo(() => new Map(webdavAccounts.map((a, i) => [a.source_id, { account: a, index: i }])), [webdavAccounts]);
 
   const loadDataQualitySurface = useCallback(async (options?: { markLoading?: boolean }) => {
     if (options?.markLoading) {
@@ -927,7 +929,7 @@ export function DataLayout() {
                       </div>
                       <div>
                         <dt className="font-black text-muted-foreground">원본 선택</dt>
-                        <dd className="mt-1 break-words text-sm font-bold text-foreground">{getWritebackTargetLabel(writebackResult, webdavAccounts)}</dd>
+                        <dd className="mt-1 break-words text-sm font-bold text-foreground">{getWritebackTargetLabel(writebackResult, webdavAccountMap)}</dd>
                       </div>
                       <div>
                         <dt className="font-black text-muted-foreground">충돌 조건</dt>
