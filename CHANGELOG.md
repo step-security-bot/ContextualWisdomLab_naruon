@@ -1,4 +1,6 @@
 ## [Unreleased]
+- `backend/api/security.py` 파일에서 사용하지 않는 `from __future__ import annotations` 구문을 제거하여 코드 품질을 개선했습니다.
+## [Unreleased]
 
 ## [0.14.4] - 2026-06-18
 

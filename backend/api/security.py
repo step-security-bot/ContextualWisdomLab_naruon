@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -125,10 +123,7 @@ def _evidence_label(evidence_source: str) -> str:
 
 
 def _can_read_org_scope(auth_context: AuthContext) -> bool:
-    return (
-        is_admin_role(auth_context.role)
-        and auth_context.organization_id is not None
-    )
+    return is_admin_role(auth_context.role) and auth_context.organization_id is not None
 
 
 def _webdav_scope_statement(auth_context: AuthContext):
@@ -279,7 +274,9 @@ def _webdav_source(
         source_type="webdav_repository",
         source_label="WebDAV repository",
         scope_kind=_scope_kind(account.organization_id),
-        capabilities=["read", "write", "etag"] if account.writeback_enabled else ["read"],
+        capabilities=["read", "write", "etag"]
+        if account.writeback_enabled
+        else ["read"],
         writeback_enabled=bool(account.writeback_enabled),
         policy_decision=decision,
         last_observed_at=_datetime_to_utc_iso(account.created_at),
