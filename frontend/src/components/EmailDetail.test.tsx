@@ -200,7 +200,7 @@ describe("EmailDetail", () => {
         if (url.endsWith("/api/emails/thread/thread-a")) return threadAResponse.promise;
         if (url.endsWith("/api/emails/thread/thread-b")) return threadBResponse.promise;
         if (url.endsWith("/api/llm/summarize")) {
-          return Promise.resolve(jsonResponse({ summary: "Summary", todos: [] }));
+          return Promise.resolve(jsonResponse({ summary: "종합", todos: [] }));
         }
         throw new Error(`Unexpected fetch: ${url}`);
       });
@@ -411,7 +411,7 @@ describe("EmailDetail", () => {
       if (url.endsWith("/api/emails/3")) return standaloneEmailResponse.promise;
       if (url.endsWith("/api/emails/thread/thread-a")) return threadResponse.promise;
       if (url.endsWith("/api/llm/summarize")) {
-        return Promise.resolve(jsonResponse({ summary: "Summary", todos: [] }));
+        return Promise.resolve(jsonResponse({ summary: "종합", todos: [] }));
       }
       throw new Error(`Unexpected fetch: ${url}`);
     });
