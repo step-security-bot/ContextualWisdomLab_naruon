@@ -55,7 +55,6 @@ describe("/auth/session route", () => {
         headers: {
           Origin: "https://app.naruon.net",
           Cookie: "naruon_session=attacker-fixed-session",
-          Origin: "https://app.naruon.net",
         },
         body: JSON.stringify({ access_token: token }),
       }),
