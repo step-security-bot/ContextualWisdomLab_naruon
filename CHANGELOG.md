@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### 성능 개선 (Performance)
+
+- `get_emails` API 응답 속도 개선. Python 3.7+ 이상의 딕셔너리 삽입 순서 보장 특성을 활용하여, 불필요한 배열 뒤집기(`reverse()`)와 2차 정렬(`O(N log N)`) 작업을 제거하였습니다. 이를 통해 API 응답 속도와 메모리 사용량을 최적화했습니다.
+
+### 보안 패치 (Security)
+
+- **CRLF 인젝션 방지:** 이메일 전송 API(`POST /api/emails/send`)의 `subject`, `to`, `in_reply_to`, `references` 파라미터에서 개행 문자(`\r`, `\n`)를 차단하는 엄격한 Pydantic 검증 로직을 추가하여 SMTP 명령 인젝션 취약점을 해결했습니다.
+- **이중 확장자 검증:** 이메일 파일 업로드 API(`POST /api/emails/import-files`)에서 `.exe.eml` 등 악성 이중 확장자 파일이 업로드되는 것을 방지하도록 확장자 검증 로직을 강화했습니다.
+
 ## [0.14.4] - 2026-06-18
 
 ### 추가

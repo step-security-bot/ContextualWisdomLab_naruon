@@ -2,7 +2,6 @@
 
 [![Application CI](https://github.com/ContextualWisdomLab/naruon/actions/workflows/app-ci.yml/badge.svg)](https://github.com/ContextualWisdomLab/naruon/actions/workflows/app-ci.yml)
 [![Bandit Security Scan](https://github.com/ContextualWisdomLab/naruon/actions/workflows/bandit.yml/badge.svg)](https://github.com/ContextualWisdomLab/naruon/actions/workflows/bandit.yml)
-[![Strix Security Scan](https://github.com/ContextualWisdomLab/naruon/actions/workflows/strix.yml/badge.svg)](https://github.com/ContextualWisdomLab/naruon/actions/workflows/strix.yml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ContextualWisdomLab/naruon)
 
 Full-stack AI workspace with a FastAPI backend, Next.js frontend, vector search,
@@ -39,38 +38,16 @@ mail/calendar/file systems.
 - Keycloak is the default enterprise OIDC evaluation target; Casdoor remains a
   lighter alternative. Traefik and OpenTelemetry are evaluated for edge policy and
   open-source observability.
-- PR automation is metadata-only and uses current-head robot-review evidence plus
-  required checks. Human approval is not awaited by default under repo policy.
-- Strix PR/security evidence defaults to GitHub Models through
-  `STRIX_LLM=openai/gpt-5`, `STRIX_GITHUB_MODELS_TOKEN`, `models: read`,
-  `github.token`, and `LLM_API_BASE_FILE` pointing at a trusted file containing
-  `https://models.github.ai/inference`. The workflow keeps that endpoint in a
-  trusted input file, tries the configured GPT-5-or-newer GitHub Models primary
-  first, and may fall back only to the explicit GitHub Models fallback list:
-  `deepseek/deepseek-r1-0528` and `deepseek/deepseek-v3-0324`. The workflow
-  passes the token only through the provider-scoped Strix child-process key path.
-  Legacy `STRIX_LLM` secrets do not override PR, push, or scheduled Strix
-  defaults. Vertex remains available only for manual `workflow_dispatch`
-  evidence when `strix_llm` explicitly selects
-  `vertex_ai/gemini-3.1-pro-preview-customtools` or
-  `vertex_ai/gemini-2.5-flash` with `GCP_SA_KEY`; direct OpenAI
-  GPT-5.4-or-newer remains supported only for manual `strix_llm` selections
-  with `STRIX_OPENAI_API_KEY`. The workflow fails closed rather than using generic
-  `LLM_API_KEY`, silently falling back across providers, or treating
-  timeout-class provider infrastructure failures as clean evidence. Known
-  third-party Strix/Pydantic serializer warnings are filtered narrowly instead
-  of allowing Warn-class logs into passing evidence, and runtime scan-budget
-  variables are not listed as visible timeout-named workflow `env:` entries.
-  PR-scope scan budgets leave room for report finalization after Strix emits
-  completion events; workflow PR evidence uses
-  `STRIX_TARGET_PATH=__PR_SCOPE__` so the scanner target is the generated
-  PR-head changed-file scope with allowlisted trusted context, not the trusted
-  base checkout or the full repository tree. Strix receives that complete
-  scannable changed-file set in one scanner invocation because its analysis
-  contract depends on whole changed-file context. Scanner child processes
-  disable npm, pnpm, yarn, and bun lifecycle scripts while inspecting PR scope data. Wrapper
-  timeout output is failed evidence. Pending CodeRabbit or check evidence is a
-  wait state, not a hard blocker.
+- PR automation is metadata-only inside this repository and uses current-head
+  robot-review evidence plus required checks. Human approval is not awaited by
+  default under repo policy.
+- OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are
+  supplied by the ContextualWisdomLab central required workflows from
+  `ContextualWisdomLab/.github`. This repository does not carry repo-local
+  OpenCode, Strix, or merge-scheduler workflow copies; branch updates,
+  auto-merge, and mechanical merge actions run as the target repository's
+  `github-actions[bot]` through the central workflow. Pending CodeRabbit or
+  required-check evidence is a wait state, not a hard blocker.
 - Security governance is source-backed through signed
   `/api/security/access-surface`. The endpoint reads scoped WebDAV, CalDAV, and
   connector evidence plus durable `security_audit_events`, reuses the deny-first

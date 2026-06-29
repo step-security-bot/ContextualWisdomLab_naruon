@@ -1,28 +1,24 @@
+import datetime
+import logging
+import time
 from collections import defaultdict
 from threading import Lock
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import or_, select
-from db.session import get_db
-from db.models import Email
-from pydantic import BaseModel, EmailStr, Field
-import datetime
-import time
 from typing import Literal
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.auth import AuthContext, get_auth_context
+from db.models import Email
+from db.session import get_db
 from services.email_client import (
     EmailMessageParams,
     SmtpConfig,
     send_email,
     validate_smtp_destination,
 )
-from services.reply_tracking_service import (
-    check_missing_replies,
-    configured_email_addresses,
-    message_is_from_user,
-    message_is_self_sent,
-    thread_requires_reply,
-)
-from services.threading_service import normalize_message_id
 from services.email_dedupe_service import (
     EmailDedupeCandidate,
     candidate_message_lookup_values,
@@ -30,19 +26,25 @@ from services.email_dedupe_service import (
     email_strong_fingerprint,
 )
 from services.email_import_service import (
-    EmailImportEmbeddingProvider,
-    EmailImportQuotaExceeded,
     MAX_IMPORT_UPLOAD_BYTES,
     MAX_IMPORT_UPLOADS,
+    EmailImportEmbeddingProvider,
     EmailImportItemStatus,
+    EmailImportQuotaExceeded,
     EmailImportUpload,
     import_email_uploads,
 )
 from services.llm_provider_selection import resolve_runtime_llm_provider
-from services.text_safety import strip_html_markup
-import logging
-from api.auth import AuthContext, get_auth_context
+from services.reply_tracking_service import (
+    check_missing_replies,
+    configured_email_addresses,
+    message_is_from_user,
+    message_is_self_sent,
+    thread_requires_reply,
+)
 from services.tenant_config_scope import get_scoped_tenant_config
+from services.text_safety import strip_html_markup
+from services.threading_service import normalize_message_id
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,15 @@ _email_send_attempts_by_scope: dict[tuple[str | None, str], list[float]] = {}
 _email_send_rate_limit_lock = Lock()
 
 
+def _prune_expired_email_send_attempts(cutoff: float) -> None:
+    for key, attempts in list(_email_send_attempts_by_scope.items()):
+        fresh_attempts = [attempt for attempt in attempts if attempt > cutoff]
+        if fresh_attempts:
+            _email_send_attempts_by_scope[key] = fresh_attempts
+        else:
+            del _email_send_attempts_by_scope[key]
+
+
 def _enforce_send_email_rate_limit(auth_context: AuthContext) -> None:
     now = time.monotonic()
     cutoff = now - _SEND_EMAIL_RATE_LIMIT_WINDOW_SECONDS
@@ -61,11 +72,8 @@ def _enforce_send_email_rate_limit(auth_context: AuthContext) -> None:
 
     # ponytail: process-local throttle; move to Redis when multi-worker send volume matters.
     with _email_send_rate_limit_lock:
-        attempts = [
-            attempt
-            for attempt in _email_send_attempts_by_scope.get(key, [])
-            if attempt > cutoff
-        ]
+        _prune_expired_email_send_attempts(cutoff)
+        attempts = _email_send_attempts_by_scope.get(key, [])
         if len(attempts) >= _SEND_EMAIL_RATE_LIMIT_MAX_ATTEMPTS:
             _email_send_attempts_by_scope[key] = attempts
             raise HTTPException(
@@ -281,14 +289,11 @@ async def get_emails(
         .limit(candidate_window)
     )
     emails = list(result.scalars().all())
-    # ⚡ Bolt: Reverse the list in-place (O(N)) instead of sorting (O(N log N)).
-    # The database already sorted the records by date descending, so reversing it
-    # yields chronological order without redundant sorting overhead.
-    emails.reverse()
+    # ⚡ Bolt: No longer reversing `emails` array. `emails` remains sorted newest-to-oldest.
+    # By iterating newest-to-oldest, we can build the groups in naturally sorted order
+    # (by newest email), eliminating the need for a secondary sort.
 
     grouped = {}
-    # ⚡ Bolt: Use defaultdict to avoid redundant membership checks and dictionary access overhead.
-    # Also removed the date comparison since emails are pre-sorted oldest to newest.
     reply_counts = defaultdict(int)
     thread_messages = defaultdict(list)
     has_sent_message = {}
@@ -300,21 +305,23 @@ async def get_emails(
 
         thread_messages[group_key].append(email)
         reply_counts[group_key] += 1
-        grouped[group_key] = email
+
+        # Keep the newest email (the first one we encounter) for the thread display
+        if group_key not in grouped:
+            grouped[group_key] = email
 
         if is_sent_folder and group_key not in has_sent_message:
             if message_is_from_user(email, user_addresses):
                 has_sent_message[group_key] = True
 
     if is_sent_folder:
-        visible_groups = [
+        sorted_groups = [
             email
             for group_key, email in grouped.items()
             if has_sent_message.get(group_key, False)
-        ]
+        ][:limit]
     else:
-        visible_groups = list(grouped.values())
-    sorted_groups = sorted(visible_groups, key=lambda x: x.date, reverse=True)[:limit]
+        sorted_groups = list(grouped.values())[:limit]
 
     items = []
     for email in sorted_groups:
@@ -326,7 +333,8 @@ async def get_emails(
                 reply_count=reply_counts[group_key],
                 is_self_sent=message_is_self_sent(email, user_addresses),
                 requires_reply=thread_requires_reply(
-                    thread_messages[group_key], user_addresses
+                    thread_messages[group_key],
+                    user_addresses,
                 ),
             )
         )
@@ -530,12 +538,22 @@ async def import_email_files(
     uploads: list[EmailImportUpload] = []
     for upload in files:
         normalized_filename = upload.filename.lower().strip() if upload.filename else ""
-        if not upload.filename or not (
-            normalized_filename.endswith(".eml")
-            or normalized_filename.endswith(".zip")
-            or normalized_filename.endswith(".mbox")
-        ):
+        if not upload.filename:
             raise HTTPException(status_code=400, detail="invalid_file_type")
+
+        parts = normalized_filename.split(".")
+        if len(parts) < 2:
+            raise HTTPException(status_code=400, detail="invalid_file_type")
+
+        valid_extensions = {".eml", ".zip", ".mbox"}
+        ext = f".{parts[-1]}"
+        if ext not in valid_extensions:
+            raise HTTPException(status_code=400, detail="invalid_file_type")
+
+        dangerous_exts = {".exe", ".sh", ".bat", ".cmd", ".vbs", ".ps1", ".js", ".scr"}
+        for part in parts[1:]:
+            if f".{part}" in dangerous_exts:
+                raise HTTPException(status_code=400, detail="invalid_file_type")
 
         content = await upload.read(MAX_IMPORT_UPLOAD_BYTES + 1)
         if len(content) > MAX_IMPORT_UPLOAD_BYTES:
@@ -648,6 +666,13 @@ class SendEmailRequest(BaseModel):
     body: str
     in_reply_to: str | None = None  # O3: email threading support
     references: str | None = None
+
+    @field_validator("subject", "in_reply_to", "references", "to", mode="before")
+    @classmethod
+    def no_crlf_str(cls, v):
+        if isinstance(v, str) and (chr(10) in v or chr(13) in v):
+            raise ValueError("CR/LF characters are not allowed in email headers")
+        return v
 
 
 @router.post("/send")

@@ -26,6 +26,7 @@ def test_generate_ics_from_task():
     assert "PRODID:-//Naruon//AI Workspace//EN" in ics_content
     assert "BEGIN:VTODO" in ics_content
     assert "UID:abc-123" in ics_content
+    assert "CREATED:20260523T100000Z" in ics_content
     assert "SUMMARY:Review Q2 Marketing Report" in ics_content
     assert "STATUS:IN-PROCESS" in ics_content
     assert "DUE:20260525T150000Z" in ics_content

@@ -18,6 +18,7 @@ vi.mock("lucide-react", () => ({
   ChevronRight: () => <svg aria-hidden="true" />,
   Settings: () => <svg aria-hidden="true" />,
   X: () => <svg aria-hidden="true" />,
+  Loader2: () => <svg aria-hidden="true" />,
   Paperclip: () => <svg aria-hidden="true" />,
 }));
 

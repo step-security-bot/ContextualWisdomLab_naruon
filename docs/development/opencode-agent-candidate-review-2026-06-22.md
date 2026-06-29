@@ -69,11 +69,17 @@ The rejected part is the toolchain, not the useful ideas:
 
 ## Verification hooks
 
-`scripts/ci/test_strix_quick_gate.sh` asserts the durable contracts that matter:
+The durable OpenCode and Strix contracts now live in the central required
+workflows in `ContextualWisdomLab/.github`, not in repo-local Naruon shell
+scripts. Naruon should be used as live evidence that the organization workflow
+handles the cases this review identified:
 
 - CodeGraph initialization and CodeGraph MCP prompt usage.
 - Candidate-derived prompt constraints for CodeGraph, Ponytail, im-not-ai, and
   KKTV.
-- `OPENCODE_MODEL_ATTEMPTS: "2"` and per-model retry logging.
+- Multiple model attempts and per-model retry logging.
 - Failed-check evidence collection for current-head Strix workflow runs.
-- Deterministic low-risk fallback limits and fail-closed invalid-output behavior.
+- Deterministic low-risk fallback limits and fail-closed invalid-output
+  behavior.
+- Outdated branch updates through the target repository's
+  `github-actions[bot]` when the PR is otherwise mergeable.

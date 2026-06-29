@@ -9,12 +9,9 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import sys
 import importlib.util
-import shutil
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -123,7 +120,6 @@ def test_backend_images_use_python_314_runtime() -> None:
     docker_publish_workflow = read_repo_text(".github/workflows/docker-publish.yml")
     app_ci_workflow = read_repo_text(".github/workflows/app-ci.yml")
     bandit_workflow = read_repo_text(".github/workflows/bandit.yml")
-    strix_workflow = read_repo_text(".github/workflows/strix.yml")
     render_deployment = read_repo_text("docs/operations/render-deployment.md")
 
     assert_dockerfile_stage_from(root_dockerfile, "python:3.14-slim", "backend-runtime")
@@ -131,7 +127,6 @@ def test_backend_images_use_python_314_runtime() -> None:
     assert "docker.io/library/python:3.14-slim" in docker_publish_workflow
     assert 'python-version: ["3.14"]' in app_ci_workflow
     assert 'python-version: "3.14"' in bandit_workflow
-    assert 'python-version: "3.13"' in strix_workflow
     assert "Python 3.14 toolchain" in render_deployment
     assert "python:3.11" not in root_dockerfile
     assert "python:3.11" not in docker_publish_workflow
@@ -173,12 +168,36 @@ def test_backend_runtime_toolchain_uses_image_scan_clean_security_pins() -> None
     assert "opentelemetry-instrumentation-fastapi==0.63b1" in requirements
 
 
-def test_strix_ci_requirements_use_security_quality_clean_pins() -> None:
-    strix_ci_requirements = read_repo_text("requirements-strix-ci.txt")
+def test_review_security_workflow_bundle_is_centralized() -> None:
+    policy = read_repo_text("docs/development/merge-gate-policy.md")
+    readme = read_repo_text("README.md")
+    agents = read_repo_text("AGENTS.md")
+    delegated_paths = [
+        ".github/workflows/opencode-review.yml",
+        ".github/workflows/strix.yml",
+        ".github/workflows/strix-selftest.yml",
+        "requirements-strix-ci.txt",
+        "scripts/ci/collect_failed_check_evidence.sh",
+        "scripts/ci/emit_opencode_failed_check_fallback_findings.sh",
+        "scripts/ci/opencode_review_approve_gate.sh",
+        "scripts/ci/opencode_review_normalize_output.py",
+        "scripts/ci/pr_review_merge_scheduler.py",
+        "scripts/ci/strix_model_utils.sh",
+        "scripts/ci/strix_quick_gate.sh",
+        "scripts/ci/test_strix_quick_gate.sh",
+        "scripts/ci/validate_opencode_failed_check_review.sh",
+    ]
 
-    assert "strix-agent==1.0.4" in strix_ci_requirements
-    assert "cryptography==49.0.0" in strix_ci_requirements
-    assert "python-multipart==0.0.32" in strix_ci_requirements
+    for relative_path in delegated_paths:
+        assert not (REPO_ROOT / relative_path).exists(), relative_path
+
+    assert "ContextualWisdomLab/.github" in policy
+    assert "Required OpenCode Review" in policy
+    assert "Strix Security Scan" in policy
+    assert "PR Review Merge Scheduler" in policy
+    assert "github-actions[bot]" in policy
+    assert "central required workflows" in readme
+    assert "central required workflows" in agents
 
 
 def test_changelog_follows_keep_a_changelog_for_initial_korean_release() -> None:
@@ -427,102 +446,15 @@ def test_scorecard_sarif_normalizer_preserves_branch_protection_category(
     assert branch_protection_run["results"] == []
 
 
-def test_opencode_review_prompt_requires_active_mcp_evidence_use() -> None:
-    workflow = read_repo_text(".github/workflows/opencode-review.yml")
+def test_opencode_and_strix_contracts_are_documented_as_central_required_workflows() -> None:
+    policy = read_repo_text("docs/development/merge-gate-policy.md")
 
-    assert "Actively consult the configured MCP evidence sources" in workflow
-    assert "actively consult CodeGraph MCP" in workflow
-    assert "DeepWiki for repo docs" in workflow
-    assert "Context7 for current library/API docs" in workflow
-    assert "web_search for bounded external lookups" in workflow
-    assert "If a configured MCP source is unavailable or not applicable" in workflow
-    assert "Lead with findings ordered by severity" in workflow
-    assert (
-        "Distinguish blocking findings from important suggestions and nits" in workflow
-    )
-    assert "request changes only for actionable blockers" in workflow.lower()
-    assert "regression test direction" in workflow
-    assert "OpenCode-owned review structure compatible with Copilot Review" in workflow
-    assert "CodeRabbitAI's severity-ordered, actionable finding format" in workflow
-    assert (
-        "Do not depend on Copilot Review, CodeRabbitAI, or any human reviewer"
-        in workflow
-    )
-    assert "## Pull request overview" in workflow
-    assert "## Findings" in workflow
-    assert "No blocking findings." in workflow
-    assert "Keep raw tool logs out of the main review body" in workflow
-    assert (
-        "<summary>Failed check evidence for line-specific fixes</summary>" in workflow
-    )
-    assert '"codegraph"' in workflow
-    assert '"deepwiki"' in workflow
-    assert '"context7"' in workflow
-    assert '"web_search"' in workflow
-
-
-def test_opencode_billing_lock_failed_checks_publish_neutral_comment(
-    tmp_path: Path,
-) -> None:
-    workflow = read_repo_text(".github/workflows/opencode-review.yml")
-    repo_root = tmp_path / "repo"
-    workflow_file = repo_root / ".github" / "workflows" / "opencode-review.yml"
-    workflow_file.parent.mkdir(parents=True)
-    workflow_file.write_text(
-        "If every active failed-check block says the job was not started because "
-        "the GitHub account is locked due to a billing issue, classify it as an "
-        "external CI/account blocker with no repository source fix.\n",
-        encoding="utf-8",
-    )
-
-    assert "is_github_billing_lock_evidence()" in workflow
-    assert "build_billing_lock_body()" in workflow
-    assert 'create_pull_review "COMMENT"' in workflow
-    assert "No source-code findings." in workflow
-    assert "do not invent source-backed REQUEST_CHANGES findings for it" in workflow
-
-    evidence_file = tmp_path / "failed-check-evidence.md"
-    evidence_file.write_text(
-        """
-# Failed GitHub Check Evidence
-
-## Failed check: App CI / backend
-
-### Check annotations
-
-- unknown:0-0 [failure] The job was not started because your account is locked due to a billing issue.
-
-## Failed check: Strix Security Scan/strix
-
-### Check annotations
-
-- unknown:0-0 [failure] The job was not started because your account is locked due to a billing issue.
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    fallback = subprocess.run(  # nosec B603
-        [
-            shutil.which("bash"),
-            str(
-                REPO_ROOT / "scripts/ci/emit_opencode_failed_check_fallback_findings.sh"
-            ),
-            str(evidence_file),
-            str(repo_root),
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-
-    assert (
-        "GitHub Actions billing lock blocked current-head check evidence"
-        in fallback.stdout
-    )
-    assert "external CI/account blocker" in fallback.stdout
-    assert "do not request repository source changes" in fallback.stdout
-    assert "No deterministic missing-string markers" not in fallback.stdout
+    assert "OpenCode observes and reviews current-head evidence" in policy
+    assert "Failed GitHub Checks are explained by the central OpenCode workflow" in policy
+    assert "Strix Security Scan is supplied by the organization required workflow" in policy
+    assert "repo-local `.github/workflows/opencode-review.yml`" in policy
+    assert "repo-local `.github/workflows/strix.yml`" in policy
+    assert "repo-local Strix quick-gate scripts" in policy
 
 
 def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushes() -> (
@@ -550,18 +482,13 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "release/**" not in push_block
 
 
-def test_pr_review_merge_scheduler_uses_minimal_token_permissions() -> None:
-    workflow = read_repo_text(".github/workflows/pr-review-merge-scheduler.yml")
+def test_pr_review_merge_scheduler_is_centralized() -> None:
+    policy = read_repo_text("docs/development/merge-gate-policy.md")
 
-    assert (
-        "permissions:\n"
-        "      actions: read\n"
-        "      checks: read\n"
-        "      contents: read\n"
-        "      pull-requests: write" in workflow
-    )
-    assert "actions: write" not in workflow
-    assert "contents: write" not in workflow
+    assert not (WORKFLOW_DIR / "pr-review-merge-scheduler.yml").exists()
+    assert "ContextualWisdomLab/.github" in policy
+    assert "PR Review Merge Scheduler" in policy
+    assert "github-actions[bot]" in policy
 
 
 def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
@@ -876,447 +803,17 @@ def test_compose_log_scanner_allows_nginx_stderr_startup_notices() -> None:
     assert len(allowed) == 7, f"Expected 7 allowed lines, got {len(allowed)}"
 
 
-def test_strix_workflow_uses_github_models_default_and_narrow_warning_filter() -> None:
-    workflow = read_repo_text(".github/workflows/strix.yml")
-    gate_script = read_repo_text("scripts/ci/strix_quick_gate.sh")
+def test_local_pr_governance_remains_metadata_only_after_review_centralization() -> None:
+    workflow = read_repo_text(".github/workflows/pr-governance.yml")
+    gate_script = read_repo_text("scripts/ci/pr_governance_gate.sh")
+    combined = f"{workflow}\n{gate_script}"
 
-    assert "format('pr-{0}', github.event.pull_request.number)" in workflow
-    assert "format('pr-{0}', github.event.inputs.pr_number)" in workflow
-    assert "|| github.ref" in workflow
-    push_block = workflow.split("push:", 1)[1].split("pull_request_target:", 1)[0]
-    assert "develop" in push_block
-    assert "master" in push_block
-    assert "cancel-in-progress: false" in workflow
-    assert "models: read" in workflow
-    assert "provider_mode=github_models" in workflow
-    assert "strix_llm:" in workflow
-    assert "github.event.inputs.strix_llm || 'openai/gpt-5'" in workflow
-    assert 'python-version: "3.13"' in workflow
-    assert "secrets.STRIX_LLM ||" not in workflow
-    assert "https://models.github.ai/inference" in workflow
-    assert "LLM_API_BASE_FILE" in workflow
-    assert (
-        "STRIX_GITHUB_MODELS_TOKEN is required for GitHub Models Strix scans"
-        in workflow
-    )
-    assert "secrets.STRIX_GITHUB_MODELS_TOKEN || github.token" in workflow
-    assert (
-        "steps.gate.outputs.provider_mode == 'github_models' && (secrets.STRIX_GITHUB_MODELS_TOKEN || github.token)"
-        in workflow
-    )
-    assert "openai/gpt-5-mini* | openai/gpt-5-nano*" in workflow
-    assert "vertex_ai/gemini-3.1-pro-preview-customtools" in workflow
-    assert (
-        "secrets.STRIX_LLM == 'vertex_ai/gemini-3.1-pro-preview-customtools' "
-        "&& 'vertex_ai/gemini-2.5-flash'" not in workflow
-    )
-    assert 'STRIX_FAIL_ON_PROVIDER_SIGNAL: "1"' in workflow
-    assert 'STRIX_VERTEX_FALLBACK_MODELS: ""' in workflow
-    assert (
-        "github_models/deepseek/deepseek-r1-0528 "
-        "github_models/deepseek/deepseek-v3-0324"
-    ) in workflow
-    assert (
-        "vertex_ai/gemini-3.1-pro-preview-customtools | vertex_ai/gemini-2.5-flash"
-        in workflow
-    )
-    assert "vertex_ai/* | vertex_ai_beta/*" not in workflow
-    assert "PYTHONWARNINGS:" not in workflow
-    assert (
-        'child_env["PYTHONWARNINGS"] = '
-        '"ignore:Pydantic serializer warnings:UserWarning:pydantic.main"' in gate_script
-    )
-    assert "ignore::UserWarning" not in workflow
-
-
-def test_strix_workflow_validates_vertex_credentials_before_export() -> None:
-    workflow = read_repo_text(".github/workflows/strix.yml")
-
-    assert 'credentials_path.read_text(encoding="utf-8")' in workflow
-    assert "object_pairs_hook=reject_duplicate_json_keys" in workflow
-    assert 'raise ValueError("duplicate credential key")' in workflow
-    assert (
-        "except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):"
-        in workflow
-    )
-    assert (
-        "GCP_SA_KEY must be valid service account JSON for Vertex AI Strix scans."
-        in workflow
-    )
-    assert "if not isinstance(credentials, dict):" in workflow
-    assert "GCP_SA_KEY must be a JSON object for Vertex AI Strix scans." in workflow
-    assert "json.loads(credentials_path.read_text())" not in workflow
-
-
-def test_opencode_review_fallbacks_do_not_emit_successful_error_annotations() -> None:
-    workflow = read_repo_text(".github/workflows/opencode-review.yml")
-
-    assert "continue-on-error: true" not in workflow
-    assert 'printf \'review_status=%s\\n\' "$1" >>"$GITHUB_OUTPUT"' in workflow
-    assert 'record_review_status "failed"' in workflow
-    assert 'record_review_status "success"' in workflow
-    assert (
-        "steps.opencode_review_primary.outputs.review_status != 'success'" in workflow
-    )
-    assert (
-        "steps.opencode_review_primary.outputs.review_status == 'success'" in workflow
-    )
-    assert "steps.opencode_review_primary.outcome" not in workflow
-    assert "steps.opencode_review_fallback.outcome" not in workflow
-    assert "steps.opencode_review_second_fallback.outcome" not in workflow
-
-
-def _bash_executable() -> str:
-    bash = shutil.which("bash")
-    assert bash is not None, "bash executable is required for governance script tests"
-    return bash
-
-
-def _run_emit_opencode_failed_check_fallback(
-    evidence_file: Path, repo_root: Path
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # nosec B603
-        [
-            _bash_executable(),
-            str(
-                REPO_ROOT / "scripts/ci/emit_opencode_failed_check_fallback_findings.sh"
-            ),
-            str(evidence_file),
-            str(repo_root),
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-
-
-def _run_validate_opencode_failed_check_review(
-    control_file: Path, failed_checks_file: Path, evidence_file: Path
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # nosec B603
-        [
-            _bash_executable(),
-            str(REPO_ROOT / "scripts/ci/validate_opencode_failed_check_review.sh"),
-            str(control_file),
-            str(failed_checks_file),
-            str(evidence_file),
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-
-def _assert_validation_succeeds(
-    control_file: Path,
-    control_data: dict[str, Any],
-    failed_checks_file: Path,
-    evidence_file: Path,
-) -> None:
-    control_file.write_text(json.dumps(control_data), encoding="utf-8")
-    validation = _run_validate_opencode_failed_check_review(
-        control_file, failed_checks_file, evidence_file
-    )
-    assert validation.returncode == 0, (
-        f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}"
-    )
-
-
-def _assert_validation_fails_with(
-    control_file: Path,
-    control_data: dict[str, Any],
-    failed_checks_file: Path,
-    evidence_file: Path,
-    expected_error: str,
-    expected_returncode: int = 4,
-) -> None:
-    control_file.write_text(json.dumps(control_data), encoding="utf-8")
-    validation = _run_validate_opencode_failed_check_review(
-        control_file, failed_checks_file, evidence_file
-    )
-    failure_output = f"stdout:\n{validation.stdout}\nstderr:\n{validation.stderr}"
-    assert validation.returncode == expected_returncode, failure_output
-    assert expected_error in validation.stdout, failure_output
-
-
-def _setup_strix_failed_check_evidence(tmp_path: Path) -> tuple[Path, Path, Path]:
-    repo_root = tmp_path / "repo"
-    auth_file = repo_root / "backend" / "app" / "auth.py"
-    page_file = repo_root / "frontend" / "src" / "app" / "page.tsx"
-    workflow_file = repo_root / ".github" / "workflows" / "strix.yml"
-    auth_file.parent.mkdir(parents=True)
-    page_file.parent.mkdir(parents=True)
-    workflow_file.parent.mkdir(parents=True)
-    auth_file.write_text("\n".join(f"# auth line {line}" for line in range(1, 180)))
-    page_file.write_text("\n".join(f"// page line {line}" for line in range(1, 80)))
-    workflow_file.write_text("STRIX_FALLBACK_MODELS: deepseek/deepseek-r1-0528\n")
-
-    evidence_file = tmp_path / "failed-check-evidence.md"
-    failed_checks_file = tmp_path / "failed-checks.md"
-    failed_checks_file.write_text("- Strix Security Scan/strix: FAILURE\n")
-    evidence_file.write_text(
-        """
-# Failed GitHub Check Evidence
-
-## Failed check: Strix Security Scan/strix
-
-### Strix vulnerability report window 1 (log lines 100-210)
-
-```text
-Strix run failed for model 'openai/gpt-5' after 145s (exit code 1).
-│  Vulnerability Report                                                        │
-│  Title: Authentication Bypass via X-Dev-User Header                          │
-│  Severity: CRITICAL                                                          │
-│  Endpoint: /api/me                                                           │
-│  Method: GET                                                                 │
-│  Code Locations                                                              │
-│    Location 1: backend/app/auth.py:132-135                                   │
-│  Model deepseek/deepseek-r1-0528                                             │
-│  Vulnerabilities 1                                                           │
-```
-
-### Strix vulnerability report window 2 (log lines 220-340)
-
-```text
-Strix run failed for model 'deepseek/deepseek-r1-0528' after 206s (exit code 2).
-│  Vulnerability Report                                                        │
-│  Title: Frontend Security Issues: XSS and Insecure Data Handling             │
-│  Severity: HIGH                                                              │
-│  Endpoint: /                                                                 │
-│  Method: GET                                                                 │
-│  Code Locations                                                              │
-│    Location 1: frontend/src/app/page.tsx:8-12                                │
-│  Model deepseek/deepseek-v3-0324                                             │
-│  Vulnerabilities 1                                                           │
-```
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-    return repo_root, evidence_file, failed_checks_file
-
-
-def test_opencode_strix_failed_check_review_keeps_late_model_reports_distinct(
-    tmp_path: Path,
-) -> None:
-    agents = read_repo_text("AGENTS.md")
-    repo_root, evidence_file, _ = _setup_strix_failed_check_evidence(tmp_path)
-
-    fallback = _run_emit_opencode_failed_check_fallback(evidence_file, repo_root)
-
-    assert (
-        "Strix report from deepseek/deepseek-r1-0528: "
-        "Authentication Bypass via X-Dev-User Header"
-    ) in fallback.stdout
-    assert (
-        "Strix report from deepseek/deepseek-v3-0324: "
-        "Frontend Security Issues: XSS and Insecure Data Handling"
-    ) in fallback.stdout
-    assert (
-        "Strix report from openai/gpt-5: Authentication Bypass" not in fallback.stdout
-    )
-    assert fallback.stdout.count("Strix report from deepseek/") == 2
-    normalized_agents = " ".join(agents.split())
-    assert "Strix logs may print the report's `Model ...` line after" in agents
-    assert "not to a previous retry attempt" in normalized_agents
-
-
-def test_opencode_strix_failed_check_review_accepts_distinct_model_reports(
-    tmp_path: Path,
-) -> None:
-    _, evidence_file, failed_checks_file = _setup_strix_failed_check_evidence(tmp_path)
-
-    good_control_file = tmp_path / "good-control.json"
-    _assert_validation_succeeds(
-        good_control_file,
-        {
-            "summary": "Strix failed with two fallback model reports.",
-            "reason": "Strix Security Scan failed",
-            "findings": [
-                {
-                    "path": "backend/app/auth.py",
-                    "line": 132,
-                    "severity": "CRITICAL",
-                    "title": "Strix report from deepseek/deepseek-r1-0528",
-                    "problem": (
-                        "Strix Security Scan/strix reported "
-                        "Authentication Bypass via X-Dev-User Header. "
-                        "Severity: CRITICAL. Endpoint: /api/me. Method: GET. "
-                        "Code location backend/app/auth.py:132-135."
-                    ),
-                    "root_cause": "deepseek/deepseek-r1-0528 report evidence",
-                    "fix_direction": "Remove X-Dev-User trust from this line.",
-                    "regression_test_direction": "Cover /api/me auth bypass.",
-                    "suggested_diff": "- old\n+ new",
-                },
-                {
-                    "path": "frontend/src/app/page.tsx",
-                    "line": 8,
-                    "severity": "HIGH",
-                    "title": "Strix report from deepseek/deepseek-v3-0324",
-                    "problem": (
-                        "Strix Security Scan/strix reported Frontend Security "
-                        "Issues: XSS and Insecure Data Handling. Severity: HIGH. "
-                        "Endpoint: /. Method: GET. Code location "
-                        "frontend/src/app/page.tsx:8-12."
-                    ),
-                    "root_cause": "deepseek/deepseek-v3-0324 report evidence",
-                    "fix_direction": "Patch the frontend render boundary.",
-                    "regression_test_direction": "Cover escaped page output.",
-                    "suggested_diff": "- old\n+ new",
-                },
-            ],
-        },
-        failed_checks_file,
-        evidence_file,
-    )
-
-
-def test_opencode_strix_failed_check_review_rejects_collapsed_model_reports(
-    tmp_path: Path,
-) -> None:
-    _, evidence_file, failed_checks_file = _setup_strix_failed_check_evidence(tmp_path)
-
-    collapsed_control_file = tmp_path / "collapsed-control.json"
-    _assert_validation_fails_with(
-        collapsed_control_file,
-        {
-            "summary": "Strix failed with two fallback model reports.",
-            "reason": "Strix Security Scan failed",
-            "findings": [
-                {
-                    "path": "backend/app/auth.py",
-                    "line": 132,
-                    "severity": "CRITICAL",
-                    "title": "Strix reports from deepseek/deepseek-r1-0528 and deepseek/deepseek-v3-0324",
-                    "problem": (
-                        "Authentication Bypass via X-Dev-User Header; "
-                        "Frontend Security Issues: XSS and Insecure Data Handling. "
-                        "Severity: CRITICAL HIGH. Endpoints: /api/me and /. "
-                        "Method: GET. Locations: backend/app/auth.py:132-135 "
-                        "and frontend/src/app/page.tsx:8-12."
-                    ),
-                    "root_cause": "Collapsed both Strix model reports into one finding.",
-                    "fix_direction": "Patch both reported locations.",
-                    "regression_test_direction": "Cover both reports.",
-                    "suggested_diff": "- old\n+ new",
-                }
-            ],
-        },
-        failed_checks_file,
-        evidence_file,
-        expected_error="FAILED_CHECK_EVIDENCE_NOT_REFERENCED",
-    )
-
-
-def test_opencode_strix_failed_check_review_model_before_title_attributed_correctly(
-    tmp_path: Path,
-) -> None:
-    """Model line appearing before Title inside a report window must override
-    a prior failed-model mention from the same window header.
-
-    This complements test_opencode_strix_failed_check_review_keeps_late_model_reports_distinct
-    which covers Model appearing *after* code locations.  Together the two tests
-    ensure both orderings (Model-before-Title and Model-after-Code-Locations) are
-    handled correctly regardless of a prior 'Strix run failed for model' line in
-    the same window.
-    """
-    repo_root = tmp_path / "repo"
-    auth_file = repo_root / "backend" / "app" / "auth.py"
-    auth_file.parent.mkdir(parents=True)
-    auth_file.write_text("\n".join(f"# auth line {line}" for line in range(1, 180)))
-
-    evidence_file = tmp_path / "failed-check-evidence.md"
-    failed_checks_file = tmp_path / "failed-checks.md"
-    failed_checks_file.write_text("- Strix Security Scan/strix: FAILURE\n")
-    evidence_file.write_text(
-        """
-# Failed GitHub Check Evidence
-
-## Failed check: Strix Security Scan/strix
-
-### Strix vulnerability report window 1 (log lines 100-210)
-
-```text
-Strix run failed for model 'openai/gpt-5' after 145s (exit code 1).
-│  Model deepseek/deepseek-r1-0528                                            │
-│  Vulnerability Report                                                       │
-│  Title: Auth Bypass via Header                                              │
-│  Severity: CRITICAL                                                         │
-│  Endpoint: /api/me                                                          │
-│  Method: GET                                                                │
-│  Code Locations                                                             │
-│    Location 1: backend/app/auth.py:132-135                                  │
-│  Vulnerabilities 1                                                          │
-```
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    fallback = _run_emit_opencode_failed_check_fallback(evidence_file, repo_root)
-
-    assert (
-        "Strix report from deepseek/deepseek-r1-0528: Auth Bypass via Header"
-    ) in fallback.stdout
-    assert "openai/gpt-5" not in fallback.stdout
-
-    good_control_file = tmp_path / "good-control.json"
-    _assert_validation_succeeds(
-        good_control_file,
-        {
-            "summary": "Strix failed with deepseek fallback report.",
-            "reason": "Strix Security Scan failed",
-            "findings": [
-                {
-                    "path": "backend/app/auth.py",
-                    "line": 132,
-                    "severity": "CRITICAL",
-                    "title": "Strix report from deepseek/deepseek-r1-0528",
-                    "problem": (
-                        "Strix Security Scan/strix reported "
-                        "Auth Bypass via Header. "
-                        "Severity: CRITICAL. Endpoint: /api/me. Method: GET. "
-                        "Code location backend/app/auth.py:132-135."
-                    ),
-                    "root_cause": "deepseek/deepseek-r1-0528 report evidence",
-                    "fix_direction": "Remove the bypass.",
-                    "regression_test_direction": "Cover auth bypass.",
-                    "suggested_diff": "- old\n+ new",
-                }
-            ],
-        },
-        failed_checks_file,
-        evidence_file,
-    )
-
-    wrong_attribution_file = tmp_path / "wrong-control.json"
-    _assert_validation_fails_with(
-        wrong_attribution_file,
-        {
-            "summary": "Strix failed.",
-            "reason": "Strix Security Scan failed",
-            "findings": [
-                {
-                    "path": "backend/app/auth.py",
-                    "line": 132,
-                    "severity": "CRITICAL",
-                    "title": "Strix report from openai/gpt-5",
-                    "problem": (
-                        "Strix Security Scan/strix reported Auth Bypass via Header. "
-                        "Severity: CRITICAL."
-                    ),
-                    "root_cause": "openai/gpt-5 report evidence",
-                    "fix_direction": "Remove the bypass.",
-                    "regression_test_direction": "Cover auth bypass.",
-                    "suggested_diff": "- old\n+ new",
-                }
-            ],
-        },
-        failed_checks_file,
-        evidence_file,
-        expected_error="FAILED_CHECK_EVIDENCE_NOT_REFERENCED",
-    )
+    assert "pull_request_target:" in workflow
+    assert "Strix Security Scan" in workflow
+    assert "CodeRabbit" in gate_script or "coderabbit" in gate_script
+    assert "gh pr merge" not in gate_script
+    assert "--match-head-commit" not in gate_script
+    assert "actions/checkout" not in combined
 
 
 def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge() -> (

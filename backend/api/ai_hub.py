@@ -15,7 +15,7 @@ from db.models import (
     SecurityAuditEvent,
     WorkflowDefinition,
 )
-from db.session import get_db
+from db.session import get_db, get_readonly_db
 from services.llm_provider_readiness import (
     is_llm_provider_configured,
     llm_provider_model_label,
@@ -423,8 +423,10 @@ async def _list_agent_run_records(
 @router.get("/workflows", response_model=list[AiHubWorkflowCard])
 async def list_ai_hub_workflows(
     auth_context: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_readonly_db),
 ) -> list[AiHubWorkflowCard]:
+    # ⚡ Bolt: Use get_readonly_db for read-only operations; falls back to primary DB
+    # when READONLY_DATABASE_URL is unset. Reduces connection load on the primary.
     workflows = await _list_workflow_definitions(db, auth_context)
     return [_workflow_card_from_definition(workflow) for workflow in workflows]
 
@@ -467,8 +469,10 @@ async def create_ai_hub_workflow(
 @router.get("/runs", response_model=list[AiHubRunEvent])
 async def list_ai_hub_runs(
     auth_context: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_readonly_db),
 ) -> list[AiHubRunEvent]:
+    # ⚡ Bolt: Use get_readonly_db for read-only operations; falls back to primary DB
+    # when READONLY_DATABASE_URL is unset. Reduces connection load on the primary.
     run_records = await _list_agent_run_records(db, auth_context)
     return [_run_event_from_record(run_record) for run_record in run_records]
 
@@ -476,8 +480,10 @@ async def list_ai_hub_runs(
 @router.get("/surface", response_model=AiHubSurfaceResponse)
 async def get_ai_hub_surface(
     auth_context: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_readonly_db),
 ) -> AiHubSurfaceResponse:
+    # ⚡ Bolt: Use get_readonly_db for read-only operations; falls back to primary DB
+    # when READONLY_DATABASE_URL is unset. Reduces connection load on the primary.
     prompts = await _list_prompts(db, auth_context)
     providers = await _list_providers(db, auth_context)
     audit_events = await _list_audit_events(db, auth_context)
@@ -491,13 +497,11 @@ async def get_ai_hub_surface(
         if provider.is_active and is_llm_provider_configured(provider)
     )
     workflow_cards = [
-        _workflow_card_from_definition(workflow)
-        for workflow in workflow_definitions
+        _workflow_card_from_definition(workflow) for workflow in workflow_definitions
     ] or _workflow_cards(prompt_cards, active_provider_count)
     agent_cards = [_agent_card(provider) for provider in providers]
     run_events = [
-        _run_event_from_record(run_record)
-        for run_record in agent_run_records
+        _run_event_from_record(run_record) for run_record in agent_run_records
     ] or _run_events(prompts, audit_events)
     readiness_score = _score(
         active_provider_count,

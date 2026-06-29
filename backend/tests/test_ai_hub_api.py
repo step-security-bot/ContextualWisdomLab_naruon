@@ -25,7 +25,7 @@ from db.models import (
     SecurityAuditEvent,
     WorkflowDefinition,
 )
-from db.session import get_db
+from db.session import get_db, get_readonly_db
 from main import app
 
 TEST_SESSION_HMAC_SECRET = "ai-hub-surface-hmac-value-20260529-32"  # noqa: S105
@@ -306,6 +306,7 @@ def _request_with_signed_session(
 
     settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
     app.dependency_overrides[get_db] = scoped_db
+    app.dependency_overrides[get_readonly_db] = scoped_db
     try:
         token = _signed_session_token(
             _valid_session_payload(**payload_overrides),
@@ -362,7 +363,6 @@ def test_ai_hub_surface_uses_signed_source_evidence():
     assert "무스코프 레거시 공유 프롬프트" not in response.text
     assert "id" not in data["prompt_cards"][0]
     assert data["workflow_cards"][0]["state_code"] == "needs_provider"
-
 
     assert data["evaluation_metrics"][1]["score_value"] == 0
     assert data["run_events"][0]["evidence_source"] == "api.llm_providers"
@@ -478,6 +478,7 @@ def test_ai_hub_workflow_api_requires_signed_session():
         yield session
 
     app.dependency_overrides[get_db] = scoped_db
+    app.dependency_overrides[get_readonly_db] = scoped_db
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
@@ -527,6 +528,7 @@ def test_ai_hub_surface_rejects_public_identity_headers_without_signed_session()
         yield session
 
     app.dependency_overrides[get_db] = scoped_db
+    app.dependency_overrides[get_readonly_db] = scoped_db
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.get(
@@ -673,6 +675,7 @@ async def test_ai_hub_surface_postgres_smoke_uses_signed_scope():
         )
     )
     app.dependency_overrides[get_db] = override_real_db
+    app.dependency_overrides[get_readonly_db] = override_real_db
     try:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(

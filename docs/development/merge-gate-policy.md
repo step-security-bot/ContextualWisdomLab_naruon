@@ -43,6 +43,23 @@ CodeRabbit/robot-review evidence. Human review is not awaited by default.
   unrelated scanner is temporarily failing.
 - Bypass actors must not be configured for routine delivery.
 - Security workflows and scanners are required gates, not optional paths.
+- Required OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler
+  are supplied by the organization required workflow ruleset from
+  `ContextualWisdomLab/.github`. This repository must not carry repo-local `.github/workflows/opencode-review.yml`, repo-local `.github/workflows/strix.yml`, repo-local `.github/workflows/pr-review-merge-scheduler.yml`, or repo-local Strix quick-gate scripts and OpenCode helper scripts.
+- OpenCode observes and reviews current-head evidence before it approves,
+  requests changes, or publishes retry guidance. Failed GitHub Checks are explained by the central OpenCode workflow with the failed check name, log or
+  annotation evidence, source path/line when available, fix direction, and a
+  rerun or verification command.
+- Strix Security Scan is supplied by the organization required workflow and is
+  not configured from this repository's workflow files or CI helper scripts.
+- Mechanical branch update, auto-merge, and merge actions run as the target
+  repository's `github-actions[bot]` through the central workflow. If GitHub
+  reports the PR branch is behind or outdated and merge is otherwise waitable,
+  the scheduler should update the branch from the target branch before waiting
+  for checks again. If the update is blocked by conflicts, the review or gate
+  output must name the base/head branch pair, describe that the author must merge
+  or rebase the target branch into the PR branch, resolve conflict markers, and
+  rerun focused checks.
 
 ## Evidence commands
 

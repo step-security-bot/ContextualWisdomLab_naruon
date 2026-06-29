@@ -1,7 +1,8 @@
 "use client";
+import { toSafeReactText } from "@/lib/safe-text";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Settings, Plus, Users, Video, Paperclip, Clock, CalendarDays, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, Plus, Users, Video, Paperclip, Clock, CalendarDays, X, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { apiClient } from '@/lib/api-client';
@@ -231,6 +232,9 @@ export function CalendarLayout() {
   const isSourceRegistryReady = sourceLoadStatus === 'ready';
 
   const requestWritebackIntent = useCallback(async (action: 'create' | 'update', executeProvider = false) => {
+    if (action !== 'create' && action !== 'update') {
+      return;
+    }
     if (!isSourceRegistryReady) {
       setWritebackResult(null);
       setWritebackStatus(sourceLoadStatus === 'error' ? 'error' : 'loading');
@@ -356,8 +360,9 @@ export function CalendarLayout() {
                   onClick={() => void requestWritebackIntent('create')}
                   disabled={isWritebackActionDisabled}
                   aria-busy={isWritebackLoading}
-                  className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60"
+                  className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60"
                 >
+                  {isWritebackLoading && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
                   새 일정 intent 점검
                 </button>
                 <button
@@ -365,8 +370,9 @@ export function CalendarLayout() {
                   onClick={() => void requestWritebackIntent('update')}
                   disabled={isWritebackActionDisabled}
                   aria-busy={isWritebackLoading}
-                  className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold hover:bg-secondary disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  className="inline-flex items-center justify-center rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold hover:bg-secondary disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
+                  {isWritebackLoading && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
                   ETag 업데이트 점검
                 </button>
                 <button
@@ -374,8 +380,9 @@ export function CalendarLayout() {
                   onClick={() => void requestWritebackIntent('update', true)}
                   disabled={isProviderExecutionDisabled}
                   aria-busy={isWritebackLoading}
-                  className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  className="inline-flex items-center justify-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
+                  {isWritebackLoading && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
                   ETag 실행 요청
                 </button>
               </div>
@@ -531,7 +538,7 @@ export function CalendarLayout() {
           )}
           {viewMode === '일정 상세' && (
             <section aria-label="일정 상세" className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <h3 className="text-lg font-bold">{selectedDetailEvent ? `${selectedDetailEvent.title} 상세` : '일정 상세'}</h3>
+              <h3 className="text-lg font-bold">{selectedDetailEvent ? `${toSafeReactText(selectedDetailEvent.title)} 상세` : '일정 상세'}</h3>
               <dl className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-border bg-background p-4">
                   <dt className="text-xs font-black text-muted-foreground">원본 계정</dt>
@@ -613,9 +620,9 @@ export function CalendarLayout() {
         <div className="mt-6">
           <div className="flex items-center gap-3">
             <div className={`size-4 rounded-full ${selectedDetailEvent?.dotClassName ?? 'bg-muted'}`}></div>
-            <h2 className="text-xl font-bold">{selectedDetailEvent ? `${selectedDetailEvent.title} (Naruon 2.0)` : '표시 중인 일정 없음'}</h2>
+            <h2 className="text-xl font-bold">{selectedDetailEvent ? `${toSafeReactText(selectedDetailEvent.title)} (Naruon 2.0)` : '표시 중인 일정 없음'}</h2>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">{selectedDetailEvent?.description ?? '왼쪽 캘린더 목록에서 하나 이상의 캘린더를 표시하세요.'}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{toSafeReactText(selectedDetailEvent?.description) ?? '왼쪽 캘린더 목록에서 하나 이상의 캘린더를 표시하세요.'}</p>
         </div>
 
         <div className="mt-6 space-y-5">
@@ -647,7 +654,7 @@ export function CalendarLayout() {
             <CalendarDays className="size-5 text-muted-foreground shrink-0" />
             <div>
               <p className="text-sm font-semibold mb-1">설명</p>
-              <p className="text-sm text-muted-foreground">{selectedDetailEvent?.description ?? '표시할 일정 설명이 없습니다.'}</p>
+              <p className="text-sm text-muted-foreground">{toSafeReactText(selectedDetailEvent?.description) ?? '표시할 일정 설명이 없습니다.'}</p>
             </div>
           </div>
           <div className="flex gap-3 items-start">

@@ -1,5 +1,0 @@
-strix-agent==1.0.4
-google-cloud-aiplatform==1.158.0
-cryptography==49.0.0
-protobuf==6.33.6
-python-multipart==0.0.32

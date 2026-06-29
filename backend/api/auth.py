@@ -1,4 +1,3 @@
-from http.client import HTTPSConnection
 import hashlib
 import json
 import logging
@@ -7,12 +6,13 @@ import socket
 import ssl
 import time
 from dataclasses import dataclass, field
+from http.client import HTTPSConnection
 from typing import Annotated, Any, Literal, cast
 from urllib.parse import urlsplit
 
 import jwt
-from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
+from jwt import PyJWKClient
 
 from core.config import settings, validate_auth_session_hmac_secret_value
 from core.url_validation import (
