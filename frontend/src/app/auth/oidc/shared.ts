@@ -55,16 +55,39 @@ export function serverOidcConfig(origin: string): ServerOidcConfig | null {
 
 export function safeReturnTo(value: unknown) {
   const candidate = typeof value === "string" ? value.trim() : "";
-  if (
-    !candidate ||
-    !candidate.startsWith("/") ||
-    candidate.startsWith("//") ||
-    candidate.includes("\\") ||
-    CONTROL_CHARACTER_PATTERN.test(candidate)
-  ) {
+  if (!candidate) return "/";
+
+  try {
+    const decodedCandidate = decodeURIComponent(candidate);
+    if (
+      !candidate.startsWith("/") ||
+      candidate.startsWith("//") ||
+      decodedCandidate.startsWith("//") ||
+      /[\u0000-\u001f\u007f\\]/.test(candidate) ||
+      /[\u0000-\u001f\u007f\\]/.test(decodedCandidate)
+    ) {
+      return "/";
+    }
+
+    const url = new URL(candidate, "http://localhost");
+    if (url.origin !== "http://localhost") return "/";
+
+    const safePath = url.pathname + url.search + url.hash;
+    const decodedSafePath = decodeURIComponent(safePath);
+
+    if (
+      !safePath.startsWith("/") ||
+      safePath.startsWith("//") ||
+      decodedSafePath.startsWith("//") ||
+      /[\u0000-\u001f\u007f\\]/.test(decodedSafePath)
+    ) {
+      return "/";
+    }
+
+    return safePath;
+  } catch {
     return "/";
   }
-  return candidate;
 }
 
 export function randomUrlSafeString(byteLength: number) {

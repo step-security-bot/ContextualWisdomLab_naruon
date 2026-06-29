@@ -70,3 +70,7 @@
 **Vulnerability:** Session metadata validation skipped explicit issuer (`iss`) and audience (`aud`) checks whenever OIDC was globally configured, rather than checking claims against the verifier that actually accepted the token.
 **Learning:** Security validation functions must use contextual verifier evidence instead of assuming that a global configuration flag describes the token path.
 **Prevention:** Pass the session verifier into metadata validation, fail closed when OIDC issuer/client configuration is incomplete, and normalize OIDC audiences before checking membership.
+## 2026-06-29 - [Fix Open Redirect Bypass in `safeReturnTo`]
+**Vulnerability:** The `safeReturnTo` logic in `frontend/src/app/auth/oidc/shared.ts` relied strictly on un-decoded string matching. Due to the lack of URL decoding prior to checking, values encoded with specific characters, such as `/%5c%5cevil.com` or `/%09/evil.com` bypassed the check and were capable of acting as an Open Redirect once rendered by the browser or redirect handlers.
+**Learning:** Checking string prefixes for URL validations without decoding the candidate or using URL parsing rules enables attackers to exploit browser normalization quirks (like decoding `/%5c%5c` to `//` which redirects externally).
+**Prevention:** Rely on the `URL` constructor with a safe base domain (e.g. `http://localhost`) to normalize the candidate path. Reject cases where `url.origin` differs from the safe dummy base or contains unintended `//` when decoded, ensuring no bypass is possible regardless of payload obfuscation.
