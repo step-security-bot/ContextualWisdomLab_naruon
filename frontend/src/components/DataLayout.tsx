@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect, type ChangeEvent } from 'react';
+import { useCallback, useState, useEffect, useMemo, type ChangeEvent } from 'react';
 import { Database, FileText, HardDrive, RefreshCw, FolderOpen, CheckCircle2, Server, Upload, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 
@@ -522,21 +522,48 @@ export function DataLayout() {
   const isUniqueThreadLoading = uniqueThreadStatus === 'loading';
   const isEmailImportLoading = emailImportStatus === 'loading';
   const isDocumentActionLoading = documentActionStatus === 'loading';
-  const selectedWebdavAccount = webdavAccounts.find((account) => (
-    account.source_id === selectedWebdavSourceId && account.writeback_enabled
-  )) ?? webdavAccounts.find((account) => account.writeback_enabled) ?? null;
-  const repositories = dataQualitySurface?.repositories ?? [];
-  const emailRepository = repositories.find((repository) => repository.repository_type === 'email_repository');
-  const attachmentRepository = repositories.find((repository) => repository.repository_type === 'attachment_repository');
-  const embeddingStage = dataQualitySurface?.pipeline_stages.find((stage) => stage.stage_key === 'embedding_inventory');
-  const connectorEvents = dataQualitySurface?.connector_events ?? [];
-  const repositoryAssets = dataQualitySurface?.repository_assets ?? [];
-  const selectedRepositoryAsset = repositoryAssets.find((asset) => asset.asset_key === selectedRepositoryAssetKey)
-    ?? repositoryAssets[0]
-    ?? null;
-  const selectedWorkspaceDocument = selectedRepositoryAsset?.asset_type === 'workspace_document'
-    ? selectedRepositoryAsset
-    : null;
+  const {
+    selectedWebdavAccount,
+    emailRepository,
+    attachmentRepository,
+    embeddingStage,
+    connectorEvents,
+    repositoryAssets,
+    selectedRepositoryAsset,
+    selectedWorkspaceDocument,
+  } = useMemo(() => {
+    const selectedWebdavAccount = webdavAccounts.find((account) => (
+      account.source_id === selectedWebdavSourceId && account.writeback_enabled
+    )) ?? webdavAccounts.find((account) => account.writeback_enabled) ?? null;
+    const repositories = dataQualitySurface?.repositories ?? [];
+    const emailRepository = repositories.find((repository) => repository.repository_type === 'email_repository');
+    const attachmentRepository = repositories.find((repository) => repository.repository_type === 'attachment_repository');
+    const embeddingStage = dataQualitySurface?.pipeline_stages.find((stage) => stage.stage_key === 'embedding_inventory');
+    const connectorEvents = dataQualitySurface?.connector_events ?? [];
+    const repositoryAssets = dataQualitySurface?.repository_assets ?? [];
+    const selectedRepositoryAsset = repositoryAssets.find((asset) => asset.asset_key === selectedRepositoryAssetKey)
+      ?? repositoryAssets[0]
+      ?? null;
+    const selectedWorkspaceDocument = selectedRepositoryAsset?.asset_type === 'workspace_document'
+      ? selectedRepositoryAsset
+      : null;
+
+    return {
+      selectedWebdavAccount,
+      emailRepository,
+      attachmentRepository,
+      embeddingStage,
+      connectorEvents,
+      repositoryAssets,
+      selectedRepositoryAsset,
+      selectedWorkspaceDocument,
+    };
+  }, [
+    webdavAccounts,
+    selectedWebdavSourceId,
+    dataQualitySurface,
+    selectedRepositoryAssetKey
+  ]);
 
   return (
     <div className="flex h-full min-w-0 min-h-0 bg-background text-foreground flex-col overflow-x-hidden">
