@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, union_all
 from db.session import get_db, get_readonly_db
 from db.models import Email, Attachment
-from services.embedding import STORAGE_EMBEDDING_DIMENSION, fit_embedding_vector, generate_embeddings
+from services.embedding import (
+    STORAGE_EMBEDDING_DIMENSION,
+    fit_embedding_vector,
+    generate_embeddings,
+)
 from api.auth import AuthContext, get_auth_context
 from services.exceptions import EmbeddingGenerationError
 from services.llm_provider_selection import resolve_runtime_llm_provider
@@ -47,19 +51,6 @@ def thread_group_key():
     return func.coalesce(normalized_thread_id, normalized_message_id)
 
 
-def build_reply_counts_subquery(
-    user_id: str | None = None, organization_id: str | None = None
-):
-    group_key = thread_group_key()
-    statement = select(
-        group_key.label("thread_key"),
-        func.count(Email.id).label("reply_count"),
-    ).select_from(Email)
-    if user_id is not None:
-        statement = statement.where(*Email.owner_filters(user_id, organization_id))
-    return statement.group_by(group_key).subquery("thread_counts")
-
-
 def _search_score(text_column, embedding_column, query: str, query_embedding):
     fts_score = func.ts_rank_cd(
         func.to_tsvector("english", text_column),
@@ -71,7 +62,7 @@ def _search_score(text_column, embedding_column, query: str, query_embedding):
     return fts_score - vector_distance
 
 
-def build_email_search_stmt(query: str, query_embedding, owner_filters, reply_counts):
+def build_email_search_stmt(query: str, query_embedding, owner_filters):
     search_score = _search_score(
         Email.body,
         Email.embedding,
@@ -87,19 +78,15 @@ def build_email_search_stmt(query: str, query_embedding, owner_filters, reply_co
             Email.sender,
             Email.date,
             thread_group_key().label("thread_id"),
-            reply_counts.c.reply_count,
             Email.body.label("content"),
             search_score.label("score"),
         )
         .select_from(Email)
-        .join(reply_counts, reply_counts.c.thread_key == thread_group_key())
         .where(*owner_filters)
     )
 
 
-def build_attachment_search_stmt(
-    query: str, query_embedding, owner_filters, reply_counts
-):
+def build_attachment_search_stmt(query: str, query_embedding, owner_filters):
     search_score = _search_score(
         Attachment.content,
         Attachment.embedding,
@@ -115,18 +102,18 @@ def build_attachment_search_stmt(
             Email.sender,
             Email.date,
             thread_group_key().label("thread_id"),
-            reply_counts.c.reply_count,
             Attachment.content.label("content"),
             search_score.label("score"),
         )
         .select_from(Attachment)
         .join(Email, Attachment.email_id == Email.id)
-        .join(reply_counts, reply_counts.c.thread_key == thread_group_key())
         .where(*owner_filters)
     )
 
 
-def process_search_results(rows, limit: int) -> list[SearchResultItem]:
+def process_search_results(
+    rows, limit: int, thread_reply_counts: dict[str, int]
+) -> list[SearchResultItem]:
     search_results = []
     seen_ids = set()
     for row in rows:
@@ -151,7 +138,9 @@ def process_search_results(rows, limit: int) -> list[SearchResultItem]:
                 date=row.date,
                 snippet=snippet,
                 thread_id=row.thread_id,
-                reply_count=row.reply_count or 1,
+                reply_count=thread_reply_counts.get(row.thread_id, 1)
+                if row.thread_id
+                else 1,
                 score=float(score) if score is not None else 0.0,
             )
         )
@@ -205,15 +194,11 @@ async def hybrid_search(
         owner_filters = Email.owner_filters(
             target_user_id, auth_context.organization_id
         )
-        reply_counts = build_reply_counts_subquery(
-            target_user_id, auth_context.organization_id
-        )
-
         stmt_email = build_email_search_stmt(
-            request.query, query_embedding, owner_filters, reply_counts
+            request.query, query_embedding, owner_filters
         )
         stmt_att = build_attachment_search_stmt(
-            request.query, query_embedding, owner_filters, reply_counts
+            request.query, query_embedding, owner_filters
         )
 
         combined = union_all(stmt_email, stmt_att).cte("combined_search")
@@ -226,7 +211,6 @@ async def hybrid_search(
                 combined.c.sender,
                 combined.c.date,
                 combined.c.thread_id,
-                combined.c.reply_count,
                 combined.c.content,
                 combined.c.score,
             )
@@ -237,7 +221,25 @@ async def hybrid_search(
         result = await search_db.execute(stmt)
         rows = result.all()
 
-        search_results = process_search_results(rows, request.limit)
+        # ⚡ Bolt Optimization: Lazy thread reply counts
+        # Impact: Prevents massive N+1 full-table aggregation on the Email table.
+        # Fetching reply counts only for the matched search threads drastically reduces DB load.
+        thread_reply_counts = {}
+        matched_thread_ids = {row.thread_id for row in rows if row.thread_id}
+        if matched_thread_ids:
+            thread_key_expr = thread_group_key()
+            counts_stmt = (
+                select(thread_key_expr, func.count(Email.id))
+                .select_from(Email)
+                .where(*owner_filters, thread_key_expr.in_(matched_thread_ids))
+                .group_by(thread_key_expr)
+            )
+            counts_result = await search_db.execute(counts_stmt)
+            thread_reply_counts = {t_id: count for t_id, count in counts_result.all()}
+
+        search_results = process_search_results(
+            rows, request.limit, thread_reply_counts
+        )
 
         return SearchResponse(results=search_results)
     except HTTPException:

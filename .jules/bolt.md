@@ -81,3 +81,7 @@
 ## 2026-06-24 - Defer large SQLAlchemy vector payloads
 **Learning:** Mapping large `Vector(1536)` embedding columns as eager default loads inflates row payloads and network transfer for routine list/detail queries that do not need the vector values.
 **Action:** Mark large embedding columns with `deferred=True` when callers rarely need them by default, and use explicit undefer/loading options only in code paths that intentionally consume embeddings. Avoid describing this as an N+1 fix; deferred columns can create extra SELECTs if accessed later in a loop.
+
+## 2025-02-12 - Lazy Thread Reply Counts for Search
+**Learning:** Joining an unbounded `GROUP BY` CTE (like thread reply counts) against a top-K full-text search query forces PostgreSQL to perform an expensive full-table aggregation before joining and filtering.
+**Action:** Instead of joining an aggregate CTE upfront, first select the top-K candidate rows, extract their grouping keys, and then execute a batched follow-up query to retrieve aggregates only for those specific keys.
