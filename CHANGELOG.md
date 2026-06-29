@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### 변경됨 (Changed)
+- `backend/tests/test_ai_hub_api.py`의 `test_ai_hub_surface_postgres_smoke_uses_signed_scope` 테스트의 복잡도를 낮추기 위해 DB 설정 및 해제 로직을 별도의 컨텍스트 매니저(`_setup_postgres_smoke_data`)로 분리하여 유지보수성을 향상시켰습니다.
+
 ## [0.14.4] - 2026-06-18
 
 ### 추가
@@ -2582,3 +2585,8 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+### 변경됨 (Changed)
+- `backend/tests/test_ai_hub_api.py`의 `test_ai_hub_surface_postgres_smoke_uses_signed_scope` 테스트의 복잡도를 낮추기 위해 DB 설정 및 해제 로직을 별도의 컨텍스트 매니저(`_setup_postgres_smoke_data`)로 분리하여 유지보수성을 향상시켰습니다.

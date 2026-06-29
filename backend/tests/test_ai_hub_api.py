@@ -1,10 +1,12 @@
 import base64
+import dataclasses
 import datetime
 import hashlib
 import hmac
 import json
 import time
 import uuid
+from contextlib import asynccontextmanager
 
 import asyncpg
 import httpx
@@ -363,7 +365,6 @@ def test_ai_hub_surface_uses_signed_source_evidence():
     assert "id" not in data["prompt_cards"][0]
     assert data["workflow_cards"][0]["state_code"] == "needs_provider"
 
-
     assert data["evaluation_metrics"][1]["score_value"] == 0
     assert data["run_events"][0]["evidence_source"] == "api.llm_providers"
     assert "credential material" not in response.text
@@ -562,19 +563,34 @@ def test_ai_hub_surface_rejects_unsupported_signed_session_crit_header():
     assert response.json() == {"detail": "Authentication required"}
 
 
-@pytest.mark.postgres
-@pytest.mark.asyncio
-async def test_ai_hub_surface_postgres_smoke_uses_signed_scope():
-    database_url = getattr(settings, "DATABASE_URL", None)
-    if not database_url:
-        pytest.skip("PostgreSQL smoke path unavailable: DATABASE_URL is not set")
+@dataclasses.dataclass
+class SmokeDataIDs:
+    user_id: str
+    organization_id: str
+    workspace_id: str
+    event_uid: str
+    workflow_uid: str
+    run_uid: str
 
+
+@asynccontextmanager
+async def _setup_postgres_smoke_data(database_url: str):
     user_id = f"ai_hub_user_{uuid.uuid4().hex[:12]}"
     organization_id = f"ai_hub_org_{uuid.uuid4().hex[:12]}"
     workspace_id = f"workspace_{organization_id}"
     event_uid = f"audit_evt_ai_hub_{uuid.uuid4().hex[:18]}"
     workflow_uid = f"workflow_{uuid.uuid4().hex}"
     run_uid = f"agent_run_{uuid.uuid4().hex}"
+
+    ids = SmokeDataIDs(
+        user_id=user_id,
+        organization_id=organization_id,
+        workspace_id=workspace_id,
+        event_uid=event_uid,
+        workflow_uid=workflow_uid,
+        run_uid=run_uid,
+    )
+
     engine = create_async_engine(database_url, echo=False)
     session_factory = None
     try:
@@ -582,7 +598,25 @@ async def test_ai_hub_surface_postgres_smoke_uses_signed_scope():
             await conn.execute(text("SELECT 1"))
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
+    except (
+        ConnectionRefusedError,
+        OSError,
+        OperationalError,
+        asyncpg.CannotConnectNowError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+        asyncpg.InvalidCatalogNameError,
+        asyncpg.InvalidPasswordError,
+    ) as exc:
+        await engine.dispose()
+        pytest.skip(f"PostgreSQL smoke path unavailable: {exc}")
+    except Exception as exc:
+        if "Multiple exceptions:" in str(exc) or "Connect call failed" in str(exc):
+            await engine.dispose()
+            pytest.skip(f"PostgreSQL smoke path unavailable: {exc}")
+        await engine.dispose()
+        raise
 
+    try:
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         async with session_factory() as session:
             prompt = PromptTemplate(
@@ -641,50 +675,10 @@ async def test_ai_hub_surface_postgres_smoke_uses_signed_scope():
             )
             session.add_all([prompt, provider, audit_event, workflow, run_record])
             await session.commit()
-    except (
-        ConnectionRefusedError,
-        OSError,
-        OperationalError,
-        asyncpg.CannotConnectNowError,
-        asyncpg.InvalidAuthorizationSpecificationError,
-        asyncpg.InvalidCatalogNameError,
-        asyncpg.InvalidPasswordError,
-    ) as exc:
-        await engine.dispose()
-        pytest.skip(f"PostgreSQL smoke path unavailable: {exc}")
-    except Exception:
-        await engine.dispose()
-        raise
 
-    assert session_factory is not None
+        yield session_factory, ids
 
-    async def override_real_db():
-        async with session_factory() as session:
-            yield session
-
-    previous_secret = settings.AUTH_SESSION_HMAC_SECRET
-    original_overrides = dict(app.dependency_overrides)
-    settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
-    token = _signed_session_token(
-        _valid_session_payload(
-            sub=user_id,
-            org=organization_id,
-            workspace=workspace_id,
-        )
-    )
-    app.dependency_overrides[get_db] = override_real_db
-    try:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport,
-            base_url="http://testserver",
-            headers={"Authorization": f"Bearer {token}"},
-        ) as client:
-            response = await client.get("/api/ai-hub/surface")
     finally:
-        settings.AUTH_SESSION_HMAC_SECRET = previous_secret
-        app.dependency_overrides.clear()
-        app.dependency_overrides.update(original_overrides)
         async with engine.begin() as conn:
             await conn.execute(
                 text("DELETE FROM agent_run_records WHERE run_uid = :run_uid"),
@@ -716,12 +710,51 @@ async def test_ai_hub_surface_postgres_smoke_uses_signed_scope():
             )
         await engine.dispose()
 
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["prompt_cards"][0]["prompt_title"] == "Postgres AI Hub prompt"
-    assert data["workflow_cards"][0]["workflow_key"] == workflow_uid
-    assert data["workflow_cards"][0]["trigger_source"] == "workflow_definition"
-    assert data["agent_cards"][0]["agent_title"] == "Postgres Provider"
-    assert data["agent_cards"][0]["configured"] is False
-    assert data["run_events"][0]["event_key"] == run_uid
-    assert data["run_events"][0]["evidence_source"] == "agent_run_records"
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_ai_hub_surface_postgres_smoke_uses_signed_scope():
+    database_url = getattr(settings, "DATABASE_URL", None)
+    if not database_url:
+        pytest.skip("PostgreSQL smoke path unavailable: DATABASE_URL is not set")
+
+    async with _setup_postgres_smoke_data(database_url) as (session_factory, ids):
+        assert session_factory is not None
+
+        async def override_real_db():
+            async with session_factory() as session:
+                yield session
+
+        previous_secret = settings.AUTH_SESSION_HMAC_SECRET
+        original_overrides = dict(app.dependency_overrides)
+        settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
+        token = _signed_session_token(
+            _valid_session_payload(
+                sub=ids.user_id,
+                org=ids.organization_id,
+                workspace=ids.workspace_id,
+            )
+        )
+        app.dependency_overrides[get_db] = override_real_db
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+                headers={"Authorization": f"Bearer {token}"},
+            ) as client:
+                response = await client.get("/api/ai-hub/surface")
+        finally:
+            settings.AUTH_SESSION_HMAC_SECRET = previous_secret
+            app.dependency_overrides.clear()
+            app.dependency_overrides.update(original_overrides)
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["prompt_cards"][0]["prompt_title"] == "Postgres AI Hub prompt"
+        assert data["workflow_cards"][0]["workflow_key"] == ids.workflow_uid
+        assert data["workflow_cards"][0]["trigger_source"] == "workflow_definition"
+        assert data["agent_cards"][0]["agent_title"] == "Postgres Provider"
+        assert data["agent_cards"][0]["configured"] is False
+        assert data["run_events"][0]["event_key"] == ids.run_uid
+        assert data["run_events"][0]["evidence_source"] == "agent_run_records"
