@@ -1043,7 +1043,7 @@ export function SettingsLayout() {
                         <label htmlFor="commercial-api-key" className="text-sm font-bold text-muted-foreground">API Key</label>
                         <input id="commercial-api-key" ref={commercialApiKeyInputRef} type="password" onChange={() => setModelProviderStatus(null)} placeholder="저장 시에만 전송" className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                       </div>
-                      <button type="submit" disabled={commercialModelSaving || modelProvidersLoading} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60">
+                      <button type="submit" disabled={commercialModelSaving || modelProvidersLoading} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60">
                         {commercialModelSaving ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Plus className="size-4" aria-hidden="true" />}
                         {commercialModelSaving ? '등록 중' : '상용 모델 추가'}
                       </button>
@@ -1092,7 +1092,7 @@ export function SettingsLayout() {
                         <label htmlFor="local-api-key" className="text-sm font-bold text-muted-foreground">로컬 API 키 대체값</label>
                         <input id="local-api-key" ref={localApiKeyInputRef} type="password" onChange={() => setModelProviderStatus(null)} placeholder="필요한 경우에만 입력" className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                       </div>
-                      <button type="submit" disabled={localModelSaving || modelProvidersLoading} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60">
+                      <button type="submit" disabled={localModelSaving || modelProvidersLoading} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60">
                         {localModelSaving ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Cpu className="size-4" aria-hidden="true" />}
                         {localModelSaving ? '등록 중' : 'Gemma4 로컬 모델 등록'}
                       </button>

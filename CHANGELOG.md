@@ -2582,3 +2582,7 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+### Added
+- 키보드 접근성 향상을 위해 여러 레이아웃(`CalendarLayout`, `DataLayout`, `ProjectsLayout`, `SettingsLayout`)의 기본 `<button>` 요소에 `focus-visible` 속성(링 효과) 추가.

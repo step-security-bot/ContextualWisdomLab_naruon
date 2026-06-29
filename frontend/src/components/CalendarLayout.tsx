@@ -547,7 +547,7 @@ export function CalendarLayout() {
                 <h3 className="text-lg font-bold mb-4">회의 조율</h3>
                 <p className="text-sm text-muted-foreground mb-4">참석자들의 캘린더(CalDAV)를 종합 분석하여 최적의 시간을 제안합니다.</p>
                 <div className="grid gap-3 max-w-lg">
-                  <button type="button" className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors">
+                  <button type="button" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-4 hover:bg-primary/10 transition-colors">
                     <div className="flex items-center gap-3">
                       <span className="grid size-8 place-items-center rounded-lg bg-primary/20 text-primary font-bold">1안</span>
                       <div className="text-left">
@@ -668,7 +668,7 @@ export function CalendarLayout() {
         <div className="mt-8 flex gap-3">
           <button type="button" aria-label="출시 회의 일정 삭제" className="flex-1 rounded-lg border border-border bg-background py-2 text-sm font-bold shadow-sm hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">삭제</button>
           <button type="button" aria-label="출시 회의 일정 복사" className="flex-1 rounded-lg border border-border bg-background py-2 text-sm font-bold shadow-sm hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">복사</button>
-          <button type="button" aria-label="출시 회의 일정 수정" className="flex-1 rounded-lg bg-primary py-2 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90">수정</button>
+          <button type="button" aria-label="출시 회의 일정 수정" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 flex-1 rounded-lg bg-primary py-2 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90">수정</button>
         </div>
       </aside>
     </div>

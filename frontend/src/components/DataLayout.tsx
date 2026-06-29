@@ -1197,10 +1197,10 @@ export function DataLayout() {
                       {getSurfaceStatusLabel(check.status_code)}
                     </span>
                     <div className="mt-4 flex gap-2 justify-end border-t border-border pt-3">
-                      <button type="button" className="rounded bg-secondary px-3 py-1.5 text-xs font-bold text-secondary-foreground hover:bg-secondary/80">
+                      <button type="button" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded bg-secondary px-3 py-1.5 text-xs font-bold text-secondary-foreground hover:bg-secondary/80">
                         품질 점검
                       </button>
-                      <button type="button" className="rounded bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 border border-red-200">
+                      <button type="button" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 border border-red-200">
                         격리
                       </button>
                     </div>
