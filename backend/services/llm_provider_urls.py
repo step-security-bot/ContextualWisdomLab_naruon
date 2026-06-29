@@ -1,7 +1,7 @@
 import asyncio
 import ipaddress
-from dataclasses import dataclass
 import socket
+from dataclasses import dataclass
 from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 import httpcore
@@ -383,6 +383,7 @@ class _PinnedLLMProviderNetworkBackend(httpcore.AsyncNetworkBackend):
 
 class _PinnedLLMProviderAsyncTransport(httpx.AsyncBaseTransport):
     def __init__(self, validated: ValidatedLLMProviderBaseURL):
+        self._validated = validated
         ssl_context = create_ssl_context(verify=True, trust_env=False)
         self._pool = httpcore.AsyncConnectionPool(
             ssl_context=ssl_context,
@@ -399,15 +400,27 @@ class _PinnedLLMProviderAsyncTransport(httpx.AsyncBaseTransport):
         )
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        validated_host = self._validated.hostname.encode("ascii")
+        parsed_url = urlsplit(self._validated.normalized_url)
+        validated_netloc = parsed_url.netloc.encode("ascii")
+        validated_scheme = parsed_url.scheme.encode("ascii")
+
+        safe_headers = []
+        for k, v in request.headers.raw:
+            if k.lower() == b"host":
+                safe_headers.append((b"host", validated_netloc))
+            else:
+                safe_headers.append((k, v))
+
         req = httpcore.Request(
             method=request.method,
             url=httpcore.URL(
-                scheme=request.url.raw_scheme,
-                host=request.url.raw_host,
-                port=request.url.port,
+                scheme=validated_scheme,
+                host=validated_host,
+                port=self._validated.port,
                 target=request.url.raw_path,
             ),
-            headers=request.headers.raw,
+            headers=safe_headers,
             content=request.stream,
             extensions=request.extensions,
         )

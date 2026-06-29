@@ -2582,3 +2582,10 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+### Fixed
+- `backend/services/llm_provider_urls.py`에 존재하는 서버 측 요청 위조(SSRF) 취약점을 해결했습니다.
+  - 요청 헤더와 URL 구성요소를 클라이언트가 보낸 임의의 값 대신 서버가 사전에 검증한 안전한 `ValidatedLLMProviderBaseURL` 값으로 덮어쓰도록 수정했습니다.
+  - `Host` 헤더 조작을 통한 우회 방지를 위해, 요청 헤더의 `Host` 값 역시 검증된 `netloc` 정보로 고정했습니다.
