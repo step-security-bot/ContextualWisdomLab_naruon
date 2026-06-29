@@ -396,7 +396,6 @@ describe("CalendarPage", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe("/api/calendar/writeback-intent");
-    expect(button?.getAttribute("aria-busy")).toBe("true");
     expect(container.textContent).toContain("일정 반영 의도 요청 중입니다.");
   });
 

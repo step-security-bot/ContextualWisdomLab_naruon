@@ -7,8 +7,8 @@ import os
 import time
 
 import pytest
-from fastapi.routing import APIWebSocketRoute
 from fastapi import WebSocketException, status
+from fastapi.routing import APIWebSocketRoute
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from starlette.websockets import WebSocketDisconnect

@@ -73,8 +73,8 @@ jobs:
             frontend)
               title="naruon frontend"
               description="Naruon Next.js frontend runtime image"
-              base_digest="sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1"
-              base_name="docker.io/library/node:26-slim@${base_digest}"
+              base_digest="sha256:c2d5ade763cacfb03fe9cb8e8af5d1be5041ff331921fa26a9b231ca3a4f780a"
+              base_name="docker.io/library/node:24-slim@${base_digest}"
               ;;
             backend)
               title="naruon backend"
@@ -200,8 +200,8 @@ jobs:
             frontend)
               title="naruon frontend"
               description="Naruon Next.js frontend runtime image"
-              base_digest="sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1"
-              base_name="docker.io/library/node:26-slim@${base_digest}"
+              base_digest="sha256:c2d5ade763cacfb03fe9cb8e8af5d1be5041ff331921fa26a9b231ca3a4f780a"
+              base_name="docker.io/library/node:24-slim@${base_digest}"
               ;;
             backend)
               title="naruon backend"

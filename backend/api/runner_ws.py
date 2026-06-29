@@ -22,7 +22,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from api.auth import AuthContext, build_auth_context
 from db.models import ConnectorSignalEvent, WorkspaceRunnerConfig
 from db.session import AsyncSessionLocal
-from runner.utils.dispatch import dispatch_error
 from services.provider_writeback_retry_service import (
     is_retryable_provider_writeback_failure,
     schedule_provider_writeback_retry_safely,
@@ -292,6 +291,15 @@ def _policy_violation() -> WebSocketException:
     return WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
 
+def _dispatch_error(error_code: str) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "error": error_code,
+        "error_code": error_code,
+        "provider_write_executed": False,
+    }
+
+
 async def _dispatch_error_with_retry(
     *,
     organization_id: str,
@@ -301,7 +309,7 @@ async def _dispatch_error_with_retry(
     runner_request_id: str | None,
     schedule_retry: bool,
 ) -> dict[str, Any]:
-    result = dispatch_error(error_code)
+    result = _dispatch_error(error_code)
     return await _dispatch_response_with_retry(
         organization_id=organization_id,
         workspace_id=workspace_id,

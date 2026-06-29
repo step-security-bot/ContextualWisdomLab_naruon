@@ -59,18 +59,3 @@
 **Vulnerability:** The backend `_decode_cached_oidc_session_payload` did not verify that the algorithm specified in the unverified header matched the required asymmetric algorithm (`RS256`) before verifying the token signature. This could allow an attacker to specify a symmetric algorithm (`HS256`) and forge a token using the public key as the HMAC secret.
 **Learning:** Security frameworks and token parsing libraries may perform cryptographic verification using whatever algorithm is requested by the header if the server logic does not pre-validate it against an explicit policy constraint.
 **Prevention:** Always enforce strong algorithm constraints (e.g., matching the `alg` header to the configured asymmetric algorithm) on tokens prior to executing the decode/verification step.
-## 2026-06-24 - Prevent URL-Encoded and Windows Path Traversal Bypass
-
-**Vulnerability:** Path traversal in `_dav_path_owner_user_id` could be bypassed using doubly URL-encoded sequences (for example, `%252e%252e%252f`) and Windows-style backslashes.
-**Learning:** Checking for traversal sequences after a single `/` split is insufficient if the input path can contain encoded payloads or alternative path separators.
-**Prevention:** Recursively unquote DAV paths until stable, standardize backslashes to forward slashes, and reject `.` or `..` path segments before extracting authorization scope.
-
-## 2026-06-22 - [Bandit B314: Insecure XML Parsing in Tests]
-**Vulnerability:** `xml.etree.ElementTree.fromstring` was used to parse XML responses in tests (`backend/tests/test_dav_api.py`), triggering Bandit B314 (vulnerable to XML attacks).
-**Learning:** Even in test environments parsing trusted responses, standard XML parsers trigger security scanners because they are inherently vulnerable to XML external entity (XXE) and billion laughs attacks.
-**Prevention:** Always use `defusedxml` (`import defusedxml.ElementTree as ET`) as a drop-in replacement when parsing XML anywhere in the codebase to pass static analysis and enforce secure-by-default habits.
-
-## 2026-06-24 - Missing Auth Session Verification for OIDC
-**Vulnerability:** Session metadata validation skipped explicit issuer (`iss`) and audience (`aud`) checks whenever OIDC was globally configured, rather than checking claims against the verifier that actually accepted the token.
-**Learning:** Security validation functions must use contextual verifier evidence instead of assuming that a global configuration flag describes the token path.
-**Prevention:** Pass the session verifier into metadata validation, fail closed when OIDC issuer/client configuration is incomplete, and normalize OIDC audiences before checking membership.

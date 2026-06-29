@@ -1056,7 +1056,7 @@ export async function mockDashboardApi(page: Page, onApiRequest?: (path: string,
         },
         {
           id: 'task-reply-followup',
-          title: '보낸 메일 미답변 팔로업',
+          title: '보낸 메일 회신 SLA 확인',
           status: 'in_progress',
           priority: 'high',
           source_type: 'email',
@@ -1141,7 +1141,7 @@ export async function mockDashboardApi(page: Page, onApiRequest?: (path: string,
         tasks: [
           {
             id: 'task-reply-followup',
-            title: '미답변 팔로업: 벤더 계약 답변 요청',
+            title: '답변 SLA 확인: 벤더 계약 답변 요청',
             status: 'blocked',
             priority: 'urgent',
             source_type: 'reply_sla',

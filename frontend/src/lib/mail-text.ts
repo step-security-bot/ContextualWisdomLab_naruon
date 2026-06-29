@@ -40,9 +40,8 @@ export function toMailDisplayText(value: string | null | undefined, fallback = '
 export function toMailBodyText(value: string | null | undefined, fallback = '') {
   const rawText = toSafeReactText(value?.trim() || null, fallback);
   const displayText = stripHtmlLikeSegments(rawText)
-    .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+/g, ' ')
-    .replace(/\n(?: *\n){2,}/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
   return displayText || fallback;
 }

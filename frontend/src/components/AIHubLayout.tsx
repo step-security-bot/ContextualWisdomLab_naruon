@@ -79,7 +79,7 @@ type AiHubSurfaceResponse = {
 const tabs = [
   { id: 'prompts', label: '프롬프트 스튜디오', icon: FileCode2 },
   { id: 'workflows', label: '워크플로우', icon: GitBranch },
-  { id: 'agents', label: '판단 보조', icon: Bot },
+  { id: 'agents', label: 'AI 에이전트', icon: Bot },
   { id: 'evaluation', label: '평가', icon: ShieldCheck },
   { id: 'runs', label: '실행 이력', icon: Activity },
 ] as const;
@@ -250,7 +250,7 @@ function WorkflowPanel({ workflows, onOpenRuns }: { workflows: WorkflowCard[]; o
 
 function AgentsPanel({ agents }: { agents: AgentCard[] }) {
   if (agents.length === 0) {
-    return <EmptyState title="조직 모델 연결이 없습니다." detail="설정의 LLM 모델 연결이 구성되면 판단 보조 실행 후보로 표시됩니다." />;
+    return <EmptyState title="조직 모델 연결이 없습니다." detail="설정의 LLM 모델 연결이 구성되면 AI 에이전트 실행 후보로 표시됩니다." />;
   }
   return (
     <div className="grid gap-4 lg:grid-cols-3">

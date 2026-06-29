@@ -120,20 +120,25 @@ def _extract_date(msg: Message) -> datetime.datetime:
 
 
 def _extract_thread_id(msg: Message, message_id: str) -> str | None:
+    thread_id = None
     references = msg.get("References")  # O3: email threading support
+    in_reply_to = msg.get("In-Reply-To")
 
     if references:
-        refs = references.split(None, 1)
+        # Get the first reference as the root thread ID
+        refs = references.split()
         if refs:
-            return _sanitize_nul(refs[0])
+            thread_id = _sanitize_nul(refs[0])
 
-    in_reply_to = msg.get("In-Reply-To")
-    if in_reply_to:
-        in_reply_to_list = in_reply_to.split(None, 1)
+    if not thread_id and in_reply_to:
+        in_reply_to_list = in_reply_to.split()
         if in_reply_to_list:
-            return _sanitize_nul(in_reply_to_list[0])
+            thread_id = _sanitize_nul(in_reply_to_list[0])
 
-    return message_id
+    if not thread_id:
+        thread_id = message_id
+
+    return thread_id
 
 
 def _message_to_email_data(msg: Message) -> EmailData:

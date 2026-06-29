@@ -13,8 +13,8 @@ at its own Dockerfile. The Naruon repo ships two Dockerfiles on purpose:
 
 | Component | Dockerfile | Why split |
 |---|---|---|
-| Backend (FastAPI) | `./Dockerfile` | Python 3.14 toolchain plus Node 26 toolchain, Alembic `migrate_db.py` + `start_backend.py` entrypoint, scaling on CPU/IO. |
-| Frontend (Next.js) | `./frontend/Dockerfile` | Node 26 toolchain, Next.js build artifacts, scaling on memory. |
+| Backend (FastAPI) | `./Dockerfile` | Python 3.14 toolchain, Alembic `migrate_db.py` + `start_backend.py` entrypoint, scaling on CPU/IO. |
+| Frontend (Next.js) | `./frontend/Dockerfile` | Node 24 toolchain, Next.js build artifacts, scaling on memory. |
 
 This is the same split used by `docker-compose.yml` and `k8s/*.yaml`,
 and it preserves the AGENTS.md boundary that the browser never holds

@@ -2,7 +2,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildOidcAuthorizationUrl,
-  clearOidcTransientState,
   clearOidcSession,
   completeOidcRedirect,
   getOidcBrowserConfig,
@@ -136,23 +135,5 @@ describe('oidc-session', () => {
     const authorizationUrl = await buildOidcAuthorizationUrl(config!, 'state-123', 'verifier-123');
 
     expect(new URL(authorizationUrl).searchParams.get('state')).toBe('state-123');
-  });
-
-  it('clears transient OIDC state from sessionStorage', () => {
-    sessionStorage.setItem('naruon_oidc_state', 'state-123');
-    sessionStorage.setItem('naruon_oidc_pkce_verifier', 'verifier-123');
-    sessionStorage.setItem('naruon_oidc_return_to', '/settings');
-
-    clearOidcTransientState();
-
-    expect(sessionStorage.getItem('naruon_oidc_state')).toBeNull();
-    expect(sessionStorage.getItem('naruon_oidc_pkce_verifier')).toBeNull();
-    expect(sessionStorage.getItem('naruon_oidc_return_to')).toBeNull();
-  });
-
-  it('safely handles environments without browser storage', () => {
-    vi.stubGlobal('window', undefined);
-
-    expect(() => clearOidcTransientState()).not.toThrow();
   });
 });

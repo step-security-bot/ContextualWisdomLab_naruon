@@ -95,7 +95,7 @@ class ReplySlaScheduler:
                 for config, result in zip(configs, results):
                     if isinstance(result, Exception):
                         logger.error(
-                            "Overdue reply follow-up failed for configured owner %s.",
+                            "Reply SLA escalation failed for configured owner %s.",
                             config.user_id,
                             exc_info=result,
                         )

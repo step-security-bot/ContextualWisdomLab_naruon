@@ -82,7 +82,7 @@ def test_backend_requirements_pin_ruff_for_deterministic_ci():
     requirements = (REPO_ROOT / "backend" / "requirements.txt").read_text()
 
     assert "\nruff\n" not in f"\n{requirements}\n"
-    assert "ruff==0.15.18" in requirements
+    assert "ruff==0.15.16" in requirements
 
 
 def test_compose_gateway_services_disable_privilege_escalation():

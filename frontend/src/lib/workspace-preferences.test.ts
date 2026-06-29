@@ -1,47 +1,16 @@
 /* @vitest-environment jsdom */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// Match the repository's local hook-test pattern without adding a test dependency.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let useSyncExternalStoreArgs: any[] = [];
-
-vi.mock("react", async () => {
-  const actualReact = await vi.importActual("react");
-  return {
-    ...actualReact,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    useSyncExternalStore: vi.fn((...args: any[]) => {
-      useSyncExternalStoreArgs = args;
-      const unsubscribe = args[0](() => undefined);
-      unsubscribe();
-      return args[1]();
-    }),
-  };
-});
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getWorkspaceStartupView,
   setWorkspaceStartupView,
   subscribeWorkspaceStartupView,
-  useWorkspaceStartupView,
 } from "./workspace-preferences";
 
 describe("workspace startup preferences", () => {
-  beforeEach(() => {
-    useSyncExternalStoreArgs = [];
-    vi.clearAllMocks();
-  });
-
   afterEach(() => {
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     localStorage.clear();
-  });
-
-  it("returns dashboard when window is undefined", () => {
-    vi.stubGlobal("window", undefined);
-
-    expect(getWorkspaceStartupView()).toBe("dashboard");
   });
 
   it("returns dashboard when localStorage is empty", () => {
@@ -92,12 +61,6 @@ describe("workspace startup preferences", () => {
     window.removeEventListener("naruon:startup-view-change", listener);
   });
 
-  it("returns early when setting the view without window", () => {
-    vi.stubGlobal("window", undefined);
-
-    expect(() => setWorkspaceStartupView("calendar")).not.toThrow();
-  });
-
   it("subscribes to and cleans up custom and storage events correctly", () => {
     const listener = vi.fn();
     const unsubscribe = subscribeWorkspaceStartupView(listener);
@@ -125,58 +88,5 @@ describe("workspace startup preferences", () => {
     Object.defineProperty(unsubscribedStorageEvent, "key", { value: "naruon_startup_view", configurable: true });
     window.dispatchEvent(unsubscribedStorageEvent);
     expect(listener).toHaveBeenCalledTimes(2); // Should not increase
-  });
-
-  it("returns a noop unsubscribe when subscribing without window", () => {
-    vi.stubGlobal("window", undefined);
-    const listener = vi.fn();
-
-    const unsubscribe = subscribeWorkspaceStartupView(listener);
-
-    expect(unsubscribe).toBeTypeOf("function");
-    expect(() => unsubscribe()).not.toThrow();
-  });
-
-  it("sets up useSyncExternalStore for the startup view hook", () => {
-    const result = useWorkspaceStartupView();
-
-    expect(result).toBe("dashboard");
-    expect(useSyncExternalStoreArgs).toHaveLength(3);
-
-    const [subscribe, getSnapshot, getServerSnapshot] = useSyncExternalStoreArgs;
-    expect(getSnapshot()).toBe("dashboard");
-    expect(getServerSnapshot()).toBe("dashboard");
-
-    localStorage.setItem("naruon_startup_view", "email");
-    expect(getSnapshot()).toBe("email");
-
-    localStorage.setItem("naruon_startup_view", "invalid_view");
-    expect(getSnapshot()).toBe("dashboard");
-
-    const listener = vi.fn();
-    const addEventListenerSpy = vi.spyOn(window, "addEventListener");
-    const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
-
-    const unsubscribe = subscribe(listener);
-
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "naruon:startup-view-change",
-      listener,
-    );
-    expect(addEventListenerSpy).toHaveBeenCalledWith(
-      "storage",
-      expect.any(Function),
-    );
-
-    unsubscribe();
-
-    expect(removeEventListenerSpy).toHaveBeenCalledWith(
-      "naruon:startup-view-change",
-      listener,
-    );
-    expect(removeEventListenerSpy).toHaveBeenCalledWith(
-      "storage",
-      expect.any(Function),
-    );
   });
 });

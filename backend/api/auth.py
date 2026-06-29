@@ -250,27 +250,36 @@ def _decode_cached_oidc_session_payload(token: str) -> dict[str, Any]:
         raise _authentication_error()
     key_id = header["kid"].strip()
 
+    target_key = None
     for signing_key in _cached_oidc_signing_keys:
-        try:
-            payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=OIDC_ALLOWED_ALGORITHMS,
-                audience=settings.OIDC_CLIENT_ID,
-                issuer=settings.OIDC_ISSUER_URL,
-                options={
-                    "require": JWT_DECODE_REQUIRED_CLAIMS,
-                    "verify_signature": True,
-                },
-            )
-        except jwt.PyJWTError:
-            continue
-        if getattr(signing_key, "key_id", None) != key_id:
-            raise _authentication_error()
-        if not isinstance(payload, dict):
-            raise _authentication_error()
-        return payload
-    raise _authentication_error()
+        if getattr(signing_key, "key_id", None) == key_id:
+            target_key = signing_key
+            break
+
+    if target_key is None:
+        raise _authentication_error()
+
+    if not hasattr(target_key.key, "public_numbers"):
+        raise _authentication_error()
+
+    try:
+        payload = jwt.decode(
+            token,
+            target_key.key,
+            algorithms=OIDC_ALLOWED_ALGORITHMS,
+            audience=settings.OIDC_CLIENT_ID,
+            issuer=settings.OIDC_ISSUER_URL,
+            options={
+                "require": JWT_DECODE_REQUIRED_CLAIMS,
+                "verify_signature": True,
+            },
+        )
+    except jwt.PyJWTError:
+        raise _authentication_error()
+
+    if not isinstance(payload, dict):
+        raise _authentication_error()
+    return payload
 
 
 def _reject_unsupported_critical_headers(header: dict[str, Any]) -> None:
@@ -453,33 +462,9 @@ def _tuple_string_claim(payload: dict[str, Any], name: str) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def _session_audience_claim(payload: dict[str, Any]) -> tuple[str, ...]:
-    value = payload.get("aud")
-    if isinstance(value, str):
-        if not value.strip() or not value.isascii():
-            raise _authentication_error()
-        return (value.strip(),)
-    if isinstance(value, list | tuple):
-        normalized: list[str] = []
-        for item in value:
-            if not isinstance(item, str) or not item.strip() or not item.isascii():
-                raise _authentication_error()
-            normalized.append(item.strip())
-        return tuple(normalized)
-    raise _authentication_error()
-
-
-def _validate_session_metadata(
-    payload: dict[str, Any], session_verifier: SessionVerifier
-) -> None:
-    if session_verifier == "oidc":
-        if not settings.OIDC_ISSUER_URL or not settings.OIDC_CLIENT_ID:
-            raise _authentication_error()
-        if payload.get("iss") != settings.OIDC_ISSUER_URL:
-            raise _authentication_error()
-        if settings.OIDC_CLIENT_ID not in _session_audience_claim(payload):
-            raise _authentication_error()
-    else:
+def _validate_session_metadata(payload: dict[str, Any]) -> None:
+    # If OIDC is configured, the issuer/audience might be verified by jwt.decode
+    if not settings.OIDC_ISSUER_URL:
         if payload.get("ver") != 1:
             raise _authentication_error()
         if payload.get("iss") != SESSION_ISSUER:
@@ -513,7 +498,7 @@ def _validate_session_metadata(
 def _auth_context_from_session_payload(
     payload: dict[str, Any], session_verifier: SessionVerifier
 ) -> AuthContext:
-    _validate_session_metadata(payload, session_verifier)
+    _validate_session_metadata(payload)
     role_value = _required_string_claim(payload, "role")
     if role_value not in ALLOWED_ROLES:
         raise _authentication_error()

@@ -1,10 +1,4 @@
-from core.rbac import (
-    AbacPolicy,
-    ResourceAction,
-    check_tenant_access,
-    evaluate_abac_policy,
-)
-
+from core.rbac import check_tenant_access
 
 def test_check_tenant_access_hierarchy():
     """Test that higher privileges can access resources requiring lower privileges."""
@@ -57,63 +51,3 @@ def test_check_tenant_access_invalid_roles():
     assert check_tenant_access(None, "member") is False
     assert check_tenant_access("system_admin", None) is False
     assert check_tenant_access(None, None) is False
-
-
-def test_evaluate_abac_policy_empty_conditions():
-    """Test that a policy with no conditions allows access."""
-    policy = AbacPolicy(
-        policy_id="p1",
-        resource_type="document",
-        action=ResourceAction.READ,
-        conditions={},
-    )
-    user_attrs = {"department": "sales"}
-    assert evaluate_abac_policy(user_attrs, policy) is True
-
-
-def test_evaluate_abac_policy_exact_match():
-    """Test that exact matches of attributes allow access."""
-    policy = AbacPolicy(
-        policy_id="p2",
-        resource_type="document",
-        action=ResourceAction.WRITE,
-        conditions={"department": "sales", "clearance": "high"},
-    )
-    user_attrs = {"department": "sales", "clearance": "high"}
-    assert evaluate_abac_policy(user_attrs, policy) is True
-
-
-def test_evaluate_abac_policy_missing_attribute():
-    """Test that missing required attributes deny access."""
-    policy = AbacPolicy(
-        policy_id="p3",
-        resource_type="document",
-        action=ResourceAction.DELETE,
-        conditions={"department": "sales", "clearance": "high"},
-    )
-    user_attrs = {"department": "sales"}
-    assert evaluate_abac_policy(user_attrs, policy) is False
-
-
-def test_evaluate_abac_policy_mismatched_attribute():
-    """Test that mismatched attribute values deny access."""
-    policy = AbacPolicy(
-        policy_id="p4",
-        resource_type="document",
-        action=ResourceAction.READ,
-        conditions={"department": "sales"},
-    )
-    user_attrs = {"department": "marketing"}
-    assert evaluate_abac_policy(user_attrs, policy) is False
-
-
-def test_evaluate_abac_policy_extra_attributes():
-    """Test that extra attributes not in the policy do not deny access."""
-    policy = AbacPolicy(
-        policy_id="p5",
-        resource_type="document",
-        action=ResourceAction.READ,
-        conditions={"department": "sales"},
-    )
-    user_attrs = {"department": "sales", "clearance": "high", "role": "manager"}
-    assert evaluate_abac_policy(user_attrs, policy) is True

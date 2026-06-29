@@ -59,6 +59,15 @@ def extract_reference_ids(value: str | None) -> list[str]:
     return normalized_refs
 
 
+def email_owner_filters(user_id: str, organization_id: str | None):
+    organization_filter = (
+        Email.organization_id == organization_id
+        if organization_id is not None
+        else Email.organization_id.is_(None)
+    )
+    return (Email.user_id == user_id, organization_filter)
+
+
 async def _find_existing_thread_ids(
     session: AsyncSession,
     message_ids: list[str],
@@ -79,7 +88,7 @@ async def _find_existing_thread_ids(
 
     result = await session.execute(
         select(Email.message_id, Email.thread_id).where(
-            *Email.owner_filters(user_id, organization_id),
+            *email_owner_filters(user_id, organization_id),
             Email.message_id.in_(target_ids),
         )
     )

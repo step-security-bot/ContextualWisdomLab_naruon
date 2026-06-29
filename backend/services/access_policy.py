@@ -1,5 +1,7 @@
 """Pure RBAC/ABAC access policy decisions for workspace resources."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Literal
 

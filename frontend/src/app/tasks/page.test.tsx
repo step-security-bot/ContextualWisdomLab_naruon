@@ -222,7 +222,7 @@ describe("TasksPage", () => {
     expect(doneButton?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("creates overdue reply follow-up tasks with signed headers", async () => {
+  it("creates reply SLA ticket escalations with signed headers", async () => {
     const publicIdentityHeaders = [
       "x-user-id",
       "x-organization-id",
@@ -250,7 +250,7 @@ describe("TasksPage", () => {
           tasks: [
             {
               id: "task-reply-sla-urgent",
-              title: "미답변 팔로업: 벤더 계약 답변 요청",
+              title: "답변 SLA 확인: 벤더 계약 답변 요청",
               status: "blocked",
               priority: "urgent",
               source_type: "reply_sla",
@@ -274,7 +274,7 @@ describe("TasksPage", () => {
     await flushAsyncWork();
 
     const escalationButton = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="보낸 메일 미답변 팔로업 작업 생성"]',
+      'button[aria-label="보낸 메일 답변 SLA 티켓 생성"]',
     );
     expect(escalationButton).not.toBeNull();
     await act(async () => {
@@ -285,8 +285,8 @@ describe("TasksPage", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/tasks/reply-sla-escalations", expect.objectContaining({
       method: "POST",
     }));
-    expect(container.textContent).toContain("1개 미답변 팔로업 작업을 생성했습니다. 2개 대기 메일을 48시간 기준으로 확인했습니다.");
-    expect(container.textContent).toContain("미답변 팔로업: 벤더 계약 답변 요청");
+    expect(container.textContent).toContain("1개 답변 SLA 티켓을 생성했습니다. 2개 대기 메일을 48시간 기준으로 확인했습니다.");
+    expect(container.textContent).toContain("답변 SLA 확인: 벤더 계약 답변 요청");
     expect(container.textContent).toContain("답장 대기 메일");
     expect(container.textContent).toContain("스레드 근거 연결됨");
     expect(container.textContent).not.toContain("<sent-q2@example.com>");

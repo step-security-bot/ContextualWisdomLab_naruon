@@ -1,5 +1,4 @@
 import logging
-from urllib.parse import urlsplit, urlunsplit
 
 from openai import AsyncOpenAI
 from core.config import settings
@@ -8,14 +7,6 @@ from pydantic import BaseModel, Field
 from services.llm_provider_urls import build_llm_provider_http_client
 
 logger = logging.getLogger(__name__)
-
-OLLAMA_DRAFT_REPLY_MAX_TOKENS = 64
-OLLAMA_NATIVE_CHAT_TIMEOUT_SECONDS = 600.0
-OLLAMA_NATIVE_CHAT_HOSTS = frozenset({"ollama"})
-OLLAMA_NATIVE_CHAT_LOOPBACK_HOSTS = frozenset(
-    {"localhost", "localhost.localdomain", "127.0.0.1", "::1"}
-)
-OLLAMA_NATIVE_CHAT_PORT = 11434
 
 
 class ExtractionResult(BaseModel):
@@ -94,38 +85,22 @@ async def draft_reply(
     validated_base_url, http_client = await build_llm_provider_http_client(
         configured_base_url
     )
-    selected_model = model or settings.OPENAI_MODEL
-    messages = [
-        {
-            "role": "system",
-            "content": f"You are drafting a professional reply. Instruction: {instruction}",
-        },
-        {"role": "user", "content": email_body},
-    ]
-    native_chat_url = _ollama_native_chat_url(validated_base_url)
-    if native_chat_url is not None:
-        try:
-            return await _draft_reply_with_ollama_native_chat(
-                http_client,
-                native_chat_url,
-                selected_model,
-                messages,
-            )
-        except Exception as e:
-            logger.error(f"Error calling LLM API for drafting: {e}")
-            raise LLMServiceError(f"LLM API error during drafting: {e}") from e
-        finally:
-            await http_client.aclose()
-
     client = AsyncOpenAI(
         api_key=openai_api_key,
         base_url=validated_base_url,
         http_client=http_client,
     )
+    selected_model = model or settings.OPENAI_MODEL
     try:
         response = await client.chat.completions.create(
             model=selected_model,
-            messages=messages,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are drafting a professional reply. Instruction: {instruction}",
+                },
+                {"role": "user", "content": email_body},
+            ],
         )
     except Exception as e:
         logger.error(f"Error calling LLM API for drafting: {e}")
@@ -135,42 +110,3 @@ async def draft_reply(
 
     content = response.choices[0].message.content
     return content if content is not None else ""
-
-
-def _ollama_native_chat_url(validated_base_url: str | None) -> str | None:
-    if validated_base_url is None:
-        return None
-    parsed = urlsplit(validated_base_url)
-    hostname = (parsed.hostname or "").lower()
-    if hostname in OLLAMA_NATIVE_CHAT_LOOPBACK_HOSTS:
-        if parsed.port != OLLAMA_NATIVE_CHAT_PORT:
-            return None
-    elif hostname not in OLLAMA_NATIVE_CHAT_HOSTS:
-        return None
-    if parsed.path.rstrip("/") != "/v1":
-        return None
-    return urlunsplit((parsed.scheme, parsed.netloc, "/api/chat", "", ""))
-
-
-async def _draft_reply_with_ollama_native_chat(
-    http_client,
-    native_chat_url: str,
-    selected_model: str,
-    messages: list[dict[str, str]],
-) -> str:
-    response = await http_client.post(
-        native_chat_url,
-        json={
-            "model": selected_model,
-            "messages": messages,
-            "stream": False,
-            "think": False,
-            "options": {"num_predict": OLLAMA_DRAFT_REPLY_MAX_TOKENS},
-        },
-        timeout=OLLAMA_NATIVE_CHAT_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-    body = response.json()
-    message = body.get("message") if isinstance(body, dict) else None
-    content = message.get("content") if isinstance(message, dict) else None
-    return content if isinstance(content, str) else ""

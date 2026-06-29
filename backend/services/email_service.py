@@ -17,8 +17,7 @@ def generate_email_fingerprint(email_data: Dict[str, Any]) -> str:
     body_snippet = body[:500] # First 500 chars
     
     raw_str = f"{sender}|{subject}|{date}|{body_snippet}"
-    fingerprint_source = raw_str.encode("utf-8", errors="backslashreplace")
-    return hashlib.sha256(fingerprint_source).hexdigest()
+    return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
 
 
 def process_self_to_self(email_data: Dict[str, Any], user_email: str) -> bool:

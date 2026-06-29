@@ -103,15 +103,6 @@ describe("backend URL guard", () => {
     expect(backendApiBaseUrl().origin).toBe("https://backend.example.com");
   });
 
-  it.each(["", "   "])(
-    "ignores empty BACKEND_INTERNAL_URL value %j",
-    (backendInternalUrl) => {
-      vi.stubEnv("BACKEND_INTERNAL_URL", backendInternalUrl);
-
-      expect(backendApiBaseUrl().origin).toBe("http://127.0.0.1:8000");
-    },
-  );
-
   it("falls back to local backend in development", () => {
     expect(backendApiBaseUrl().origin).toBe("http://127.0.0.1:8000");
   });

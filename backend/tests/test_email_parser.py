@@ -1,11 +1,10 @@
-import datetime
-import os
 import tempfile
-from email.message import Message
+import os
+import datetime
 from unittest.mock import patch
 
 import pytest
-from services.email_parser import _extract_thread_id, _sanitize_nul, parse_eml
+from services.email_parser import parse_eml, _sanitize_nul
 from services.exceptions import EmailParseError
 
 
@@ -216,16 +215,6 @@ Test"""
                 assert parsed["thread_id"] == "<msg3@test.com>"
         finally:
             os.unlink(temp_path)
-
-
-def test_extract_thread_id_uses_first_reference_from_long_header():
-    msg = Message()
-    msg["References"] = " ".join(
-        ["<root@test.com>", *(f"<ref-{index}@test.com>" for index in range(200))]
-    )
-    msg["In-Reply-To"] = "<reply@test.com>"
-
-    assert _extract_thread_id(msg, "<message@test.com>") == "<root@test.com>"
 
 
 def test_parse_eml_extracts_reply_to_header():

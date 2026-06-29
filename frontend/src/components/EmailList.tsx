@@ -221,9 +221,7 @@ export function EmailList({
               value={searchQuery}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
               type="search"
-              inputMode="search"
-              role="searchbox"
-              className="h-10 rounded-xl [&::-webkit-search-cancel-button]:hidden border-input bg-background/80 pl-9 pr-9 shadow-inner shadow-slate-950/[0.02]"
+              className="h-10 rounded-xl border-input bg-background/80 pl-9 pr-9 shadow-inner shadow-slate-950/[0.02] [&::-webkit-search-cancel-button]:hidden"
             />
             {searchQuery && (
               <button

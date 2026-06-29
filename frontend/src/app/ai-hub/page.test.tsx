@@ -44,7 +44,7 @@ const aiHubSurface = {
     },
     {
       summary_key: 'ai_providers',
-      label_text: '판단 보조',
+      label_text: 'AI 에이전트',
       value_text: '1/1',
       detail_text: '활성 조직 모델 연결',
       state_code: 'ready',
@@ -189,7 +189,7 @@ describe('AIHubPage', () => {
     clickButton(container, '실행 이력 보기');
     expect(container.textContent).toContain('워크플로우 실행');
 
-    clickButton(container, '판단 보조');
+    clickButton(container, 'AI 에이전트');
     expect(container.textContent).toContain('Primary OpenAI');
     expect(container.textContent).toContain('연결 상태');
     expect(container.textContent).toContain('연결됨');

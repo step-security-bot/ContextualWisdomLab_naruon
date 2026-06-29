@@ -112,13 +112,13 @@ test('renders Today dashboard pending reply lane with signed API headers', async
     const url = new URL(request.url());
     return url.pathname === '/api/tasks/reply-sla-escalations' && request.method() === 'POST';
   });
-  await desktopDashboard.getByRole('button', { name: '홈에서 보낸 메일 미답변 팔로업 작업 생성' }).click();
+  await desktopDashboard.getByRole('button', { name: '홈에서 보낸 메일 답변 SLA 티켓 생성' }).click();
   const desktopEscalationHeaders = (await desktopEscalationRequest).headers();
   expectBrowserCookieSession(desktopEscalationHeaders, expectedNaruonToken);
   for (const headerName of publicIdentityHeaders) {
     expect(desktopEscalationHeaders[headerName]).toBeUndefined();
   }
-  await expect(desktopDashboard.getByText('1개 팔로업 작업 생성, 2개 답변 대기 확인')).toBeVisible();
+  await expect(desktopDashboard.getByText('1개 SLA 티켓 생성, 2개 답변 대기 확인')).toBeVisible();
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(desktopOverflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath('today-pending-replies-desktop.png'), fullPage: false });
@@ -139,13 +139,13 @@ test('renders Today dashboard pending reply lane with signed API headers', async
     const url = new URL(request.url());
     return url.pathname === '/api/tasks/reply-sla-escalations' && request.method() === 'POST';
   });
-  await mobileDashboard.getByRole('button', { name: '홈에서 보낸 메일 미답변 팔로업 작업 생성' }).click();
+  await mobileDashboard.getByRole('button', { name: '홈에서 보낸 메일 답변 SLA 티켓 생성' }).click();
   const mobileEscalationHeaders = (await mobileEscalationRequest).headers();
   expectBrowserCookieSession(mobileEscalationHeaders, expectedNaruonToken);
   for (const headerName of publicIdentityHeaders) {
     expect(mobileEscalationHeaders[headerName]).toBeUndefined();
   }
-  await expect(mobileDashboard.getByText('1개 팔로업 작업 생성, 2개 답변 대기 확인')).toBeVisible();
+  await expect(mobileDashboard.getByText('1개 SLA 티켓 생성, 2개 답변 대기 확인')).toBeVisible();
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(mobileOverflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath('today-pending-replies-mobile-pending-list.png'), fullPage: false });
@@ -719,7 +719,7 @@ test('updates source-linked task ticket status with signed API headers', async (
   await page.screenshot({ path: testInfo.outputPath('task-ticket-status-mobile-scroll.png'), fullPage: false });
 });
 
-test('creates overdue reply follow-up tasks with signed API headers', async ({ page }, testInfo) => {
+test('creates pending reply SLA task escalation with signed API headers', async ({ page }, testInfo) => {
   const expectedNaruonToken = 'signed-reply.sla-e2e.token';
   const publicIdentityHeaders = [
     'x-user-id',
@@ -742,7 +742,7 @@ test('creates overdue reply follow-up tasks with signed API headers', async ({ p
 
   await page.goto('/tasks');
   await expect(page.getByRole('heading', { name: '실행 항목 추적' })).toBeVisible();
-  await page.getByRole('button', { name: '보낸 메일 미답변 팔로업 작업 생성' }).click();
+  await page.getByRole('button', { name: '보낸 메일 답변 SLA 티켓 생성' }).click();
   const desktopRequest = await desktopEscalationRequest;
   const desktopHeaders = desktopRequest.headers();
   expectBrowserCookieSession(desktopHeaders, expectedNaruonToken);
@@ -751,10 +751,10 @@ test('creates overdue reply follow-up tasks with signed API headers', async ({ p
   }
   expect(desktopRequest.postDataJSON()).toEqual({ overdue_hours: 48 });
 
-  await expect(page.getByText('1개 미답변 팔로업 작업을 생성했습니다. 2개 대기 메일을 48시간 기준으로 확인했습니다.')).toBeVisible();
+  await expect(page.getByText('1개 답변 SLA 티켓을 생성했습니다. 2개 대기 메일을 48시간 기준으로 확인했습니다.')).toBeVisible();
   const desktopTicketList = page.getByLabel('원본 연결 티켓 목록');
-  await expect(desktopTicketList.getByRole('heading', { name: '미답변 팔로업: 벤더 계약 답변 요청' })).toBeVisible();
-  const escalatedDesktopTask = desktopTicketList.getByRole('article').filter({ hasText: '미답변 팔로업: 벤더 계약 답변 요청' });
+  await expect(desktopTicketList.getByRole('heading', { name: '답변 SLA 확인: 벤더 계약 답변 요청' })).toBeVisible();
+  const escalatedDesktopTask = desktopTicketList.getByRole('article').filter({ hasText: '답변 SLA 확인: 벤더 계약 답변 요청' });
   await expect(escalatedDesktopTask.getByText('차단 · 긴급')).toBeVisible();
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(desktopOverflow).toBeLessThanOrEqual(1);
@@ -767,15 +767,15 @@ test('creates overdue reply follow-up tasks with signed API headers', async ({ p
   });
   await page.goto('/tasks');
   await expect(page.getByRole('heading', { name: '실행 항목 추적' })).toBeVisible();
-  await page.getByRole('button', { name: '보낸 메일 미답변 팔로업 작업 생성' }).click();
+  await page.getByRole('button', { name: '보낸 메일 답변 SLA 티켓 생성' }).click();
   const mobileRequestHeaders = (await mobileEscalationRequest).headers();
   expectBrowserCookieSession(mobileRequestHeaders, expectedNaruonToken);
   for (const headerName of publicIdentityHeaders) {
     expect(mobileRequestHeaders[headerName]).toBeUndefined();
   }
   const mobileTicketList = page.getByLabel('원본 연결 티켓 목록');
-  await expect(mobileTicketList.getByRole('heading', { name: '미답변 팔로업: 벤더 계약 답변 요청' })).toBeVisible();
-  await mobileTicketList.getByRole('heading', { name: '미답변 팔로업: 벤더 계약 답변 요청' }).scrollIntoViewIfNeeded();
+  await expect(mobileTicketList.getByRole('heading', { name: '답변 SLA 확인: 벤더 계약 답변 요청' })).toBeVisible();
+  await mobileTicketList.getByRole('heading', { name: '답변 SLA 확인: 벤더 계약 답변 요청' }).scrollIntoViewIfNeeded();
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(mobileOverflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath('reply-sla-escalation-mobile.png'), fullPage: false });
