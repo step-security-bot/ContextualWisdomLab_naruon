@@ -676,6 +676,7 @@ export function DataLayout() {
                           key={account.source_id}
                           type="button"
                           disabled={!account.writeback_enabled}
+                          title={!account.writeback_enabled ? '쓰기 권한이 없는 계정입니다' : undefined}
                           aria-pressed={accountSelected}
                           onClick={() => setSelectedWebdavSourceId(account.source_id)}
                           className={`flex min-w-0 items-start gap-2 rounded-lg border p-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70 ${

@@ -2582,3 +2582,8 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+### Added
+- [UX] 비활성화된 버튼의 상태를 명확히 설명하는 `title` 툴팁 추가 (EmailDetail.tsx, CalendarLayout.tsx, DataLayout.tsx)

@@ -508,6 +508,7 @@ export function EmailDetail({ emailId, actionCommand = null }: { emailId: number
               <Button 
                 onClick={handleDraftReply} 
                 disabled={isDrafting || !instruction}
+                title={!instruction ? '답장 지시를 입력해주세요' : undefined}
                 aria-busy={isDrafting}
                 variant="outline"
                 size="sm"
@@ -552,6 +553,7 @@ export function EmailDetail({ emailId, actionCommand = null }: { emailId: number
                 <Button 
                   onClick={handleSendReply} 
                   disabled={isSending || !draft}
+                  title={!draft ? '작성된 초안이 없습니다' : undefined}
                   aria-busy={isSending}
                   size="sm"
                   className="h-9 rounded-xl px-4"

@@ -13,3 +13,6 @@
 ## 2024-05-24 - Ensure aria-busy accompanies disabled for async UI buttons
 **Learning:** Action buttons triggering asynchronous network operations that already implement `disabled={loading}` and visual spinners MUST also include an `aria-busy={loading}` attribute to correctly communicate the active loading state to screen reader users without requiring focus shifts.
 **Action:** When adding or auditing buttons for async operations like '동기화 중', '전송 중', or '검색 중', ensure `aria-busy={loadingVariable}` is explicitly added alongside existing spinner and disabled states.
+## 2026-06-26 - Add title tooltips to disabled buttons
+**Learning:** Buttons that are disabled for specific reasons (e.g. read-only calendar, missing draft, missing input) can be confusing for users if the reason is not obvious. Adding a `title` tooltip to explain *why* the button is disabled is a small but valuable UX enhancement.
+**Action:** When creating or updating a button that can be disabled due to specific conditions, add a `title` attribute providing a clear explanation of why it is disabled (e.g., `title={!draft ? '작성된 초안이 없습니다' : undefined}`).

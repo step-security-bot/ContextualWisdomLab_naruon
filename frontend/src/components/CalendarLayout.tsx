@@ -392,6 +392,7 @@ export function CalendarLayout() {
                     type="button"
                     aria-label={`${sourceLabel} ${sourceWritable ? '일정 반영 가능' : '읽기 전용'} 선택`}
                     disabled={!sourceWritable}
+                    title={!sourceWritable ? '읽기 전용 캘린더입니다' : undefined}
                     aria-pressed={sourceSelected}
                     onClick={() => setSelectedSourceId(source.source_id)}
                     className={`rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70 ${
