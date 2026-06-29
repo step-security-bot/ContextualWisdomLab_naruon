@@ -55,3 +55,6 @@
 ## 2026-06-21 - Mocking new Lucide icons in tests
 **Learning:** Adding a new icon from `lucide-react` (like `Loader2`) to a component without updating the corresponding test file's `vi.mock("lucide-react", ...)` block causes Vitest to throw a "No export is defined on the lucide-react mock" error.
 **Action:** When adding new `lucide-react` icons, always grep for `vi.mock("lucide-react"` in the `frontend/src/` directory to find and update the relevant test files.
+## 2024-05-25 - Replace raw text icons with standard accessible icons
+**Learning:** Using raw text characters like `×` for close buttons can lead to screen reader mispronunciation (e.g., "times" or "multiply"). It also creates visual inconsistencies across the app where other close buttons use the standard SVG icon.
+**Action:** When a button is icon-only and has a clear `aria-label`, always use the standard SVG icon (e.g., `<X className="size-4" aria-hidden="true" />` from Lucide) with `aria-hidden="true"` rather than a literal text character.

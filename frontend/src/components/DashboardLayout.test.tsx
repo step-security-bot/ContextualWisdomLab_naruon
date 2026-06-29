@@ -7,6 +7,28 @@ vi.mock("next/navigation", () => ({
   usePathname: () => window.location.pathname,
   useSearchParams: () => new URLSearchParams(window.location.search),
 }));
+vi.mock("lucide-react", () => ({
+  Bell: () => <svg aria-hidden="true" />,
+  Briefcase: () => <svg aria-hidden="true" />,
+  CalendarDays: () => <svg aria-hidden="true" />,
+  CheckCircle2: () => <svg aria-hidden="true" />,
+  Database: () => <svg aria-hidden="true" />,
+  FileText: () => <svg aria-hidden="true" />,
+  HelpCircle: () => <svg aria-hidden="true" />,
+  Home: () => <svg aria-hidden="true" />,
+  Inbox: () => <svg aria-hidden="true" />,
+  Menu: () => <svg aria-hidden="true" />,
+  PenLine: () => <svg aria-hidden="true" />,
+  Search: () => <svg aria-hidden="true" />,
+  Send: () => <svg aria-hidden="true" />,
+  Sparkles: () => <svg aria-hidden="true" />,
+  Star: () => <svg aria-hidden="true" />,
+  MoreHorizontal: () => <svg aria-hidden="true" />,
+  Settings: () => <svg aria-hidden="true" />,
+  ShieldCheck: () => <svg aria-hidden="true" />,
+  UserCircle: () => <svg aria-hidden="true" />,
+  X: () => <svg aria-hidden="true" />
+}));
 
 import { DashboardLayout } from "./DashboardLayout";
 

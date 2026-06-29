@@ -481,7 +481,7 @@ export function DashboardLayout({
             onClick={closeMobileWorkspaceMenu}
             className="grid size-10 place-items-center rounded-2xl border border-border bg-background text-sm font-black text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
-            ×
+            <X className="size-4" aria-hidden="true" />
           </button>
         </div>
         <div className="space-y-4">
