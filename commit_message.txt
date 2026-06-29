@@ -1,0 +1,6 @@
+🧹 [코드 헬스 개선] test_data_api.py의 복잡한 테스트 함수 리팩토링
+
+🎯 **What:** `test_data_quality_surface_real_postgres_smoke_uses_signed_scope` 함수의 데이터 셋업 및 초기화 부분 로직을 추출했습니다.
+💡 **Why:** 원래의 함수가 너무 길고 복잡해, 유지보수성과 가독성을 떨어트리고 있었습니다. `_seed_smoke_test_data` 및 `_teardown_smoke_test_data` 헬퍼 함수로 추출하여 가독성을 높였습니다.
+✅ **Verification:** 특정 테스트를 pytest로 실행하고 테스트 스위트 전체를 실행하여 어떠한 기능도 파손되지 않았음을 검증했습니다. 추가 파일 생성도 제거하였고 중복된 데코레이터도 정리했습니다. ruff formatter도 실행하여 lint 및 format 규칙을 만족시켰습니다.
+✨ **Result:** 함수가 더 작고 읽기 쉬워졌으며, 반복되는 로직이 분리되었습니다.

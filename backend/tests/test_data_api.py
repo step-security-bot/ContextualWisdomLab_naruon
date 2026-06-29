@@ -1,15 +1,15 @@
 import base64
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
 import time
 import uuid
+from datetime import datetime, timezone
 
 import asyncpg
-from fastapi.testclient import TestClient
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -241,8 +241,8 @@ def mock_db():
         [
             [_webdav_account("webdav_src_primary")],
             [_project_folder("webdav_folder_roadmap")],
-            (4, 1, 2, 3), # email stats
-            (3, 1, 1), # attachment stats
+            (4, 1, 2, 3),  # email stats
+            (3, 1, 1),  # attachment stats
             [_connector_event("connector_evt_data_quality")],
             [
                 (_attachment("roadmap.pdf", "extracted attachment text"), ready_email),
@@ -328,7 +328,10 @@ def test_data_quality_surface_returns_source_backed_counts_without_secrets(mock_
     assert data["repository_assets"][0]["asset_key"].startswith("asset_")
     assert data["repository_assets"][0]["thread_key"].startswith("thread_")
     assert data["repository_assets"][1]["state_code"] == "needs_attention"
-    assert data["repository_assets"][1]["source_label"] == "scriptQuarterly source pack/script"
+    assert (
+        data["repository_assets"][1]["source_label"]
+        == "scriptQuarterly source pack/script"
+    )
 
     serialized = response.text
     for forbidden in (
@@ -377,7 +380,9 @@ def test_data_quality_surface_rejects_public_identity_headers_without_signed_ses
 
 def test_member_data_quality_queries_are_owner_scoped(mock_db):
     token = _signed_session_token(
-        _valid_session_payload(sub="member", role="member", workspace="workspace-member")
+        _valid_session_payload(
+            sub="member", role="member", workspace="workspace-member"
+        )
     )
     client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
     try:
@@ -428,8 +433,7 @@ def test_data_quality_surface_includes_workspace_document_assets(mock_db):
     assert response.status_code == 200, response.text
     data = response.json()
     repositories_by_type = {
-        repository["repository_type"]: repository
-        for repository in data["repositories"]
+        repository["repository_type"]: repository for repository in data["repositories"]
     }
     assert repositories_by_type["document_repository"] == {
         "source_id": "document_repository",
@@ -484,7 +488,7 @@ def test_data_document_upload_creates_workspace_scoped_document(mock_db):
     assert data == {
         "document_id": "doc_mock_1",
         "workspace_id": "workspace-org-acme",
-            "document_name": "broadmap.md/b",
+        "document_name": "broadmap.md/b",
         "document_type": "text/markdown",
         "document_status": "uploaded",
         "content_chars": 18,
@@ -542,7 +546,9 @@ def test_data_document_actions_are_workspace_scoped_and_intent_only(mock_db):
     embedding_data = embedding_response.json()
     assert embedding_data["document_status"] == "embedding_pending"
     assert embedding_data["provider_write_executed"] is False
-    assert embedding_data["audit_event"] == "data.document.embedding_regeneration_intent"
+    assert (
+        embedding_data["audit_event"] == "data.document.embedding_regeneration_intent"
+    )
 
     assert hwp_response.status_code == 200, hwp_response.text
     hwp_data = hwp_response.json()
@@ -584,7 +590,9 @@ def test_data_document_webdav_materialization_executes_source_backed_write(
             "provider_write_executed": True,
         }
 
-    monkeypatch.setattr(data_api.runner_manager, "dispatch_command", fake_dispatch_command)
+    monkeypatch.setattr(
+        data_api.runner_manager, "dispatch_command", fake_dispatch_command
+    )
     token = _signed_session_token(_valid_session_payload())
     client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
     try:
@@ -677,7 +685,234 @@ def test_data_document_webdav_materialization_rejects_empty_document(mock_db):
         _restore_overrides(previous_secret, original_overrides)
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "Workspace document has no materializable content."
+    assert (
+        response.json()["detail"] == "Workspace document has no materializable content."
+    )
+
+
+async def _seed_smoke_test_data(conn, ids: dict):
+    await conn.execute(text("SELECT 1"))
+    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    await conn.run_sync(Base.metadata.create_all)
+    first_email = await conn.execute(
+        text(
+            """
+            INSERT INTO email_records (
+                user_id, organization_id, message_id, thread_id,
+                fingerprint, sender, recipients, subject, "date", body
+            )
+            VALUES (
+                :user_id, :organization_id, :message_id, :thread_id,
+                :fingerprint, :sender, :recipients, :subject, now(), :body
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "user_id": ids["user_id"],
+            "organization_id": ids["organization_id"],
+            "message_id": f"<data-smoke-{uuid.uuid4().hex}@example.com>",
+            "thread_id": "thread-data-smoke",
+            "fingerprint": "sha256:data-smoke",
+            "sender": "partner@example.com",
+            "recipients": "owner@example.com",
+            "subject": "Data smoke ready",
+            "body": "ready body",
+        },
+    )
+    second_email = await conn.execute(
+        text(
+            """
+            INSERT INTO email_records (
+                user_id, organization_id, message_id, sender, recipients,
+                subject, "date", body
+            )
+            VALUES (
+                :user_id, :organization_id, :message_id, :sender,
+                :recipients, :subject, now(), :body
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "user_id": ids["user_id"],
+            "organization_id": ids["organization_id"],
+            "message_id": f"<data-smoke-missing-{uuid.uuid4().hex}@example.com>",
+            "sender": "partner@example.com",
+            "recipients": "owner@example.com",
+            "subject": "Data smoke missing",
+            "body": "missing body",
+        },
+    )
+    rival_email = await conn.execute(
+        text(
+            """
+            INSERT INTO email_records (
+                user_id, organization_id, message_id, thread_id,
+                fingerprint, sender, recipients, subject, "date", body
+            )
+            VALUES (
+                :user_id, :organization_id, :message_id, :thread_id,
+                :fingerprint, :sender, :recipients, :subject, now(), :body
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "user_id": ids["rival_user_id"],
+            "organization_id": ids["rival_organization_id"],
+            "message_id": f"<data-rival-{uuid.uuid4().hex}@example.com>",
+            "thread_id": "thread-rival",
+            "fingerprint": "sha256:rival",
+            "sender": "rival@example.com",
+            "recipients": "rival@example.com",
+            "subject": "Rival",
+            "body": "rival body",
+        },
+    )
+    first_email_id = first_email.scalar_one()
+    second_email_id = second_email.scalar_one()
+    rival_email_id = rival_email.scalar_one()
+    await conn.execute(
+        text(
+            """
+            INSERT INTO email_attachments (email_id, filename, content)
+            VALUES
+            (:first_email_id, 'ready.txt', 'ready attachment'),
+            (:second_email_id, 'blank.txt', ''),
+            (:rival_email_id, 'rival.txt', 'rival attachment')
+            """
+        ),
+        {
+            "first_email_id": first_email_id,
+            "second_email_id": second_email_id,
+            "rival_email_id": rival_email_id,
+        },
+    )
+    await conn.execute(
+        text(
+            """
+            INSERT INTO webdav_accounts (
+                source_uid, user_id, organization_id, workspace_id,
+                server_url, username, credentials_encrypted,
+                writeback_enabled,
+                created_at
+            )
+            VALUES
+            (
+                :webdav_uid, :user_id, :organization_id, :workspace_id,
+                'https://data-files.example/dav', 'data@example.com',
+                'encrypted-data-secret', true, now()
+            ),
+            (
+                :rival_webdav_uid, :rival_user_id, :rival_organization_id,
+                :rival_workspace_id,
+                'https://rival-files.example/dav', 'rival@example.com',
+                'encrypted-rival-secret', true, now()
+            )
+            """
+        ),
+        {
+            "webdav_uid": ids["webdav_uid"],
+            "user_id": ids["user_id"],
+            "organization_id": ids["organization_id"],
+            "workspace_id": ids["workspace_id"],
+            "rival_webdav_uid": ids["rival_webdav_uid"],
+            "rival_user_id": ids["rival_user_id"],
+            "rival_organization_id": ids["rival_organization_id"],
+            "rival_workspace_id": ids["rival_workspace_id"],
+        },
+    )
+    await conn.execute(
+        text(
+            """
+            INSERT INTO project_folders (
+                folder_uid, user_id, organization_id, project_name,
+                webdav_path,
+                created_at
+            )
+            VALUES (
+                :folder_uid, :user_id, :organization_id,
+                'Data Smoke Folder', '/Projects/Data_Smoke', now()
+            )
+            """
+        ),
+        {
+            "folder_uid": ids["folder_uid"],
+            "user_id": ids["user_id"],
+            "organization_id": ids["organization_id"],
+        },
+    )
+    await conn.execute(
+        text(
+            """
+            INSERT INTO connector_signal_events (
+                event_uid, organization_id, workspace_id, signal_key,
+                state_code, detail_text, observed_at
+            )
+            VALUES
+            (
+                :event_uid, :organization_id, :workspace_id,
+                'connector_heartbeat', 'heartbeat',
+                'data smoke heartbeat', now()
+            ),
+            (
+                :other_workspace_event_uid, :organization_id,
+                'other_workspace', 'connector_heartbeat', 'heartbeat',
+                'other workspace heartbeat', now()
+            )
+            """
+        ),
+        {
+            "event_uid": ids["event_uid"],
+            "other_workspace_event_uid": ids["other_workspace_event_uid"],
+            "organization_id": ids["organization_id"],
+            "workspace_id": ids["workspace_id"],
+        },
+    )
+
+
+async def _teardown_smoke_test_data(conn, ids: dict):
+    await conn.execute(
+        text(
+            """
+            DELETE FROM email_attachments
+            WHERE email_id IN (
+                SELECT id FROM email_records
+                WHERE user_id IN (:user_id, :rival_user_id)
+            )
+            """
+        ),
+        {"user_id": ids["user_id"], "rival_user_id": ids["rival_user_id"]},
+    )
+    await conn.execute(
+        text("DELETE FROM email_records WHERE user_id IN (:user_id, :rival_user_id)"),
+        {"user_id": ids["user_id"], "rival_user_id": ids["rival_user_id"]},
+    )
+    await conn.execute(
+        text(
+            "DELETE FROM webdav_accounts "
+            "WHERE source_uid IN (:webdav_uid, :rival_webdav_uid)"
+        ),
+        {
+            "webdav_uid": ids["webdav_uid"],
+            "rival_webdav_uid": ids["rival_webdav_uid"],
+        },
+    )
+    await conn.execute(
+        text("DELETE FROM project_folders WHERE folder_uid = :folder_uid"),
+        {"folder_uid": ids["folder_uid"]},
+    )
+    await conn.execute(
+        text(
+            "DELETE FROM connector_signal_events "
+            "WHERE event_uid IN (:event_uid, :other_workspace_event_uid)"
+        ),
+        {
+            "event_uid": ids["event_uid"],
+            "other_workspace_event_uid": ids["other_workspace_event_uid"],
+        },
+    )
 
 
 @pytest.mark.asyncio
@@ -692,193 +927,31 @@ async def test_data_quality_surface_real_postgres_smoke_uses_signed_scope():
     workspace_id = f"workspace_{organization_id}"
     rival_user_id = f"data_rival_user_{uuid.uuid4().hex[:12]}"
     rival_organization_id = f"data_rival_org_{uuid.uuid4().hex[:12]}"
+    rival_workspace_id = f"workspace_{rival_organization_id}"
     webdav_uid = f"webdav_src_data_{uuid.uuid4().hex[:18]}"
     rival_webdav_uid = f"webdav_src_data_rival_{uuid.uuid4().hex[:12]}"
     folder_uid = f"webdav_folder_data_{uuid.uuid4().hex[:18]}"
     event_uid = f"connector_evt_data_{uuid.uuid4().hex[:18]}"
     other_workspace_event_uid = f"connector_evt_other_{uuid.uuid4().hex[:18]}"
+
+    ids = {
+        "user_id": user_id,
+        "organization_id": organization_id,
+        "workspace_id": workspace_id,
+        "rival_user_id": rival_user_id,
+        "rival_organization_id": rival_organization_id,
+        "rival_workspace_id": rival_workspace_id,
+        "webdav_uid": webdav_uid,
+        "rival_webdav_uid": rival_webdav_uid,
+        "folder_uid": folder_uid,
+        "event_uid": event_uid,
+        "other_workspace_event_uid": other_workspace_event_uid,
+    }
+
     engine = create_async_engine(database_url, echo=False)
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            await conn.run_sync(Base.metadata.create_all)
-            first_email = await conn.execute(
-                text(
-                    """
-                    INSERT INTO email_records (
-                        user_id, organization_id, message_id, thread_id,
-                        fingerprint, sender, recipients, subject, "date", body
-                    )
-                    VALUES (
-                        :user_id, :organization_id, :message_id, :thread_id,
-                        :fingerprint, :sender, :recipients, :subject, now(), :body
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "user_id": user_id,
-                    "organization_id": organization_id,
-                    "message_id": f"<data-smoke-{uuid.uuid4().hex}@example.com>",
-                    "thread_id": "thread-data-smoke",
-                    "fingerprint": "sha256:data-smoke",
-                    "sender": "partner@example.com",
-                    "recipients": "owner@example.com",
-                    "subject": "Data smoke ready",
-                    "body": "ready body",
-                },
-            )
-            second_email = await conn.execute(
-                text(
-                    """
-                    INSERT INTO email_records (
-                        user_id, organization_id, message_id, sender, recipients,
-                        subject, "date", body
-                    )
-                    VALUES (
-                        :user_id, :organization_id, :message_id, :sender,
-                        :recipients, :subject, now(), :body
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "user_id": user_id,
-                    "organization_id": organization_id,
-                    "message_id": f"<data-smoke-missing-{uuid.uuid4().hex}@example.com>",
-                    "sender": "partner@example.com",
-                    "recipients": "owner@example.com",
-                    "subject": "Data smoke missing",
-                    "body": "missing body",
-                },
-            )
-            rival_email = await conn.execute(
-                text(
-                    """
-                    INSERT INTO email_records (
-                        user_id, organization_id, message_id, thread_id,
-                        fingerprint, sender, recipients, subject, "date", body
-                    )
-                    VALUES (
-                        :user_id, :organization_id, :message_id, :thread_id,
-                        :fingerprint, :sender, :recipients, :subject, now(), :body
-                    )
-                    RETURNING id
-                    """
-                ),
-                {
-                    "user_id": rival_user_id,
-                    "organization_id": rival_organization_id,
-                    "message_id": f"<data-rival-{uuid.uuid4().hex}@example.com>",
-                    "thread_id": "thread-rival",
-                    "fingerprint": "sha256:rival",
-                    "sender": "rival@example.com",
-                    "recipients": "rival@example.com",
-                    "subject": "Rival",
-                    "body": "rival body",
-                },
-            )
-            first_email_id = first_email.scalar_one()
-            second_email_id = second_email.scalar_one()
-            rival_email_id = rival_email.scalar_one()
-            await conn.execute(
-                text(
-                    """
-                    INSERT INTO email_attachments (email_id, filename, content)
-                    VALUES
-                    (:first_email_id, 'ready.txt', 'ready attachment'),
-                    (:second_email_id, 'blank.txt', ''),
-                    (:rival_email_id, 'rival.txt', 'rival attachment')
-                    """
-                ),
-                {
-                    "first_email_id": first_email_id,
-                    "second_email_id": second_email_id,
-                    "rival_email_id": rival_email_id,
-                },
-            )
-            await conn.execute(
-                text(
-                    """
-                    INSERT INTO webdav_accounts (
-                        source_uid, user_id, organization_id, workspace_id,
-                        server_url, username, credentials_encrypted,
-                        writeback_enabled,
-                        created_at
-                    )
-                    VALUES
-                    (
-                        :webdav_uid, :user_id, :organization_id, :workspace_id,
-                        'https://data-files.example/dav', 'data@example.com',
-                        'encrypted-data-secret', true, now()
-                    ),
-                    (
-                        :rival_webdav_uid, :rival_user_id, :rival_organization_id,
-                        :rival_workspace_id,
-                        'https://rival-files.example/dav', 'rival@example.com',
-                        'encrypted-rival-secret', true, now()
-                    )
-                    """
-                ),
-                {
-                    "webdav_uid": webdav_uid,
-                    "user_id": user_id,
-                    "organization_id": organization_id,
-                    "workspace_id": workspace_id,
-                    "rival_webdav_uid": rival_webdav_uid,
-                    "rival_user_id": rival_user_id,
-                    "rival_organization_id": rival_organization_id,
-                    "rival_workspace_id": f"workspace_{rival_organization_id}",
-                },
-            )
-            await conn.execute(
-                text(
-                    """
-                    INSERT INTO project_folders (
-                        folder_uid, user_id, organization_id, project_name,
-                        webdav_path,
-                        created_at
-                    )
-                    VALUES (
-                        :folder_uid, :user_id, :organization_id,
-                        'Data Smoke Folder', '/Projects/Data_Smoke', now()
-                    )
-                    """
-                ),
-                {
-                    "folder_uid": folder_uid,
-                    "user_id": user_id,
-                    "organization_id": organization_id,
-                },
-            )
-            await conn.execute(
-                text(
-                    """
-                    INSERT INTO connector_signal_events (
-                        event_uid, organization_id, workspace_id, signal_key,
-                        state_code, detail_text, observed_at
-                    )
-                    VALUES
-                    (
-                        :event_uid, :organization_id, :workspace_id,
-                        'connector_heartbeat', 'heartbeat',
-                        'data smoke heartbeat', now()
-                    ),
-                    (
-                        :other_workspace_event_uid, :organization_id,
-                        'other_workspace', 'connector_heartbeat', 'heartbeat',
-                        'other workspace heartbeat', now()
-                    )
-                    """
-                ),
-                {
-                    "event_uid": event_uid,
-                    "other_workspace_event_uid": other_workspace_event_uid,
-                    "organization_id": organization_id,
-                    "workspace_id": workspace_id,
-                },
-            )
+            await _seed_smoke_test_data(conn, ids)
     except (
         ConnectionRefusedError,
         OSError,
@@ -926,48 +999,7 @@ async def test_data_quality_surface_real_postgres_smoke_uses_signed_scope():
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
         async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    """
-                    DELETE FROM email_attachments
-                    WHERE email_id IN (
-                        SELECT id FROM email_records
-                        WHERE user_id IN (:user_id, :rival_user_id)
-                    )
-                    """
-                ),
-                {"user_id": user_id, "rival_user_id": rival_user_id},
-            )
-            await conn.execute(
-                text(
-                    "DELETE FROM email_records WHERE user_id IN (:user_id, :rival_user_id)"
-                ),
-                {"user_id": user_id, "rival_user_id": rival_user_id},
-            )
-            await conn.execute(
-                text(
-                    "DELETE FROM webdav_accounts "
-                    "WHERE source_uid IN (:webdav_uid, :rival_webdav_uid)"
-                ),
-                {
-                    "webdav_uid": webdav_uid,
-                    "rival_webdav_uid": rival_webdav_uid,
-                },
-            )
-            await conn.execute(
-                text("DELETE FROM project_folders WHERE folder_uid = :folder_uid"),
-                {"folder_uid": folder_uid},
-            )
-            await conn.execute(
-                text(
-                    "DELETE FROM connector_signal_events "
-                    "WHERE event_uid IN (:event_uid, :other_workspace_event_uid)"
-                ),
-                {
-                    "event_uid": event_uid,
-                    "other_workspace_event_uid": other_workspace_event_uid,
-                },
-            )
+            await _teardown_smoke_test_data(conn, ids)
         await engine.dispose()
 
     assert response.status_code == 200, response.text
