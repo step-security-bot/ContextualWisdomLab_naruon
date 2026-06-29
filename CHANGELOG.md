@@ -1,4 +1,5 @@
 ## [Unreleased]
+- 테스트 코드 유지보수성 향상을 위해 `test_emails_api.py`의 `test_get_emails_reply_tracking_real_postgres_smoke` 함수 복잡도 개선. 데이터베이스 세션 준비 및 데이터 시딩 로직을 각각 `_setup_postgres_smoke_session`, `_seed_reply_tracking_smoke_data` 헬퍼 함수로 분리.
 
 ## [0.14.4] - 2026-06-18
 

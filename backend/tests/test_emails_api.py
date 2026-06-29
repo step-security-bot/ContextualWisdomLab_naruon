@@ -1327,15 +1327,12 @@ async def test_unique_email_thread_intent_query_is_scoped_to_current_user(
     assert_query_is_owner_scoped(session.queries[-1])
 
 
-@pytest.mark.postgres
-@pytest.mark.asyncio
-async def test_get_emails_reply_tracking_real_postgres_smoke():
+async def _setup_postgres_smoke_session():
     from core.config import settings
     from asyncpg.exceptions import InvalidAuthorizationSpecificationError
     from asyncpg.exceptions import InvalidPasswordError
-    from db.models import Base, TenantConfig
-    from db.session import get_db
-    from sqlalchemy import delete, text
+    from db.models import Base
+    from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -1352,12 +1349,17 @@ async def test_get_emails_reply_tracking_real_postgres_smoke():
         OSError,
     ) as exc:
         await engine.dispose()
+        import pytest
+
         pytest.skip(f"PostgreSQL smoke database unavailable: {exc}")
 
     Session = async_sessionmaker(engine, expire_on_commit=False)
-    user_id = "reply-smoke-user"
-    organization_id = "reply-smoke-org"
-    now = datetime.datetime.now(datetime.timezone.utc)
+    return engine, Session
+
+
+async def _seed_reply_tracking_smoke_data(Session, user_id, organization_id, now):
+    from db.models import Email, TenantConfig
+    from sqlalchemy import delete
 
     async def cleanup_seed_rows():
         async with Session() as session:
@@ -1425,6 +1427,24 @@ async def test_get_emails_reply_tracking_real_postgres_smoke():
             ]
         )
         await session.commit()
+
+    return cleanup_seed_rows
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_get_emails_reply_tracking_real_postgres_smoke():
+    from db.session import get_db
+
+    engine, Session = await _setup_postgres_smoke_session()
+
+    user_id = "reply-smoke-user"
+    organization_id = "reply-smoke-org"
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    cleanup_seed_rows = await _seed_reply_tracking_smoke_data(
+        Session, user_id, organization_id, now
+    )
 
     async def real_db_override():
         async with Session() as session:
