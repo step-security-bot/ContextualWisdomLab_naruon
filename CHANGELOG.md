@@ -2582,3 +2582,8 @@
 - `POSTGRES_PASSWORD=change-me-local-only docker compose up -d --build`
 - `python scripts/check_compose_logs.py --compose-log-file <captured-log-file>`
 - `docker compose down`
+
+## [Unreleased]
+
+### 테스트
+- `process_search_results` 함수에 대한 포괄적인 단위 테스트 추가 (ID 중복 제거, 제한 갯수, 데이터 생략, None 값 폴백 처리 등)

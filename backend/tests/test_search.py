@@ -1,10 +1,12 @@
 import datetime
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
+
 from db.models import LLMProvider
-from main import app
 from db.session import get_db, get_readonly_db
+from main import app
 from services.exceptions import EmbeddingGenerationError
 from services.llm_provider_selection import LOCAL_PROVIDER_API_KEY
 
@@ -284,8 +286,7 @@ def test_search_uses_primary_config_session_and_readonly_search_session(
         "llm_providers" in str(stmt).lower() for stmt in config_session.statements
     )
     assert all(
-        "combined_search" not in str(stmt).lower()
-        for stmt in config_session.statements
+        "combined_search" not in str(stmt).lower() for stmt in config_session.statements
     )
     assert "combined_search" in str(search_session.statements[-1]).lower()
 
@@ -315,3 +316,114 @@ def test_search_pads_local_embedding_dimension_for_vector_search(
     query_text = str(session.statements[-1]).lower()
     assert "ts_rank_cd" in query_text
     assert "<=>" in query_text
+
+
+class MockProcessRow:
+    def __init__(
+        self,
+        id,
+        subject,
+        sender,
+        content,
+        score,
+        source_message_id="<test@example.com>",
+        thread_id="thread-123",
+        reply_count=2,
+    ):
+        import datetime
+
+        self.id = id
+        self.source_message_id = source_message_id
+        self.subject = subject
+        self.sender = sender
+        self.content = content
+        self.score = score
+        self.date = datetime.datetime(2026, 4, 27, 10, 0, tzinfo=datetime.timezone.utc)
+        self.thread_id = thread_id
+        self.reply_count = reply_count
+
+
+def test_process_search_results_basic():
+    from api.search import process_search_results
+
+    rows = [MockProcessRow(1, "Test Subject", "test@test.com", "Test Body", 1.0)]
+    results = process_search_results(rows, limit=10)
+    assert len(results) == 1
+    assert results[0].id == 1
+    assert results[0].subject == "Test Subject"
+    assert results[0].sender == "test@test.com"
+    assert results[0].snippet == "Test Body"
+    assert results[0].score == 1.0
+
+
+def test_process_search_results_deduplication():
+    from api.search import process_search_results
+
+    rows = [
+        MockProcessRow(1, "Test Subject", "test@test.com", "Test Body", 1.0),
+        MockProcessRow(1, "Test Subject Duplicate", "test@test.com", "Test Body", 0.9),
+    ]
+    results = process_search_results(rows, limit=10)
+    assert len(results) == 1
+    assert results[0].id == 1
+    assert results[0].subject == "Test Subject"
+
+
+def test_process_search_results_limit():
+    from api.search import process_search_results
+
+    rows = [
+        MockProcessRow(1, "Test Subject 1", "test@test.com", "Test Body", 1.0),
+        MockProcessRow(2, "Test Subject 2", "test@test.com", "Test Body", 0.9),
+        MockProcessRow(3, "Test Subject 3", "test@test.com", "Test Body", 0.8),
+    ]
+    results = process_search_results(rows, limit=2)
+    assert len(results) == 2
+    assert results[0].id == 1
+    assert results[1].id == 2
+
+
+def test_process_search_results_snippet_truncation():
+    from api.search import process_search_results
+
+    long_content = "A" * 300
+    rows = [MockProcessRow(1, "Test Subject", "test@test.com", long_content, 1.0)]
+    results = process_search_results(rows, limit=10)
+    assert len(results) == 1
+    assert results[0].snippet == "A" * 200 + "..."
+
+
+def test_process_search_results_none_content():
+    from api.search import process_search_results
+
+    rows = [MockProcessRow(1, "Test Subject", "test@test.com", None, 1.0)]
+    results = process_search_results(rows, limit=10)
+    assert len(results) == 1
+    assert results[0].snippet == ""
+
+
+def test_process_search_results_none_score():
+    from api.search import process_search_results
+
+    rows = [MockProcessRow(1, "Test Subject", "test@test.com", "Test Body", None)]
+    results = process_search_results(rows, limit=10)
+    assert len(results) == 1
+    assert results[0].score == 0.0
+
+
+def test_process_search_results_none_reply_count():
+    from api.search import process_search_results
+
+    class MockProcessRowNoneReplyCount(MockProcessRow):
+        def __init__(self, id, subject, sender, content, score):
+            super().__init__(id, subject, sender, content, score)
+            self.reply_count = None
+
+    rows = [
+        MockProcessRowNoneReplyCount(
+            1, "Test Subject", "test@test.com", "Test Body", 1.0
+        )
+    ]
+    results = process_search_results(rows, limit=10)
+    assert len(results) == 1
+    assert results[0].reply_count == 1
