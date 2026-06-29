@@ -58,10 +58,7 @@ def _email_date_utc(email: Email) -> datetime.datetime:
 
 
 async def _fetch_existing_tasks_by_email(
-    db: AsyncSession,
-    user_id: str,
-    organization_id: str | None,
-    email_ids: list[int]
+    db: AsyncSession, user_id: str, organization_id: str | None, email_ids: list[int]
 ) -> dict[int, TicketTask]:
     result = await db.execute(
         select(TicketTask)
@@ -111,7 +108,7 @@ async def _refresh_escalated_tasks(
     user_id: str,
     organization_id: str | None,
     email_ids: list[int],
-    escalated_tasks: list[tuple[TicketTask, str | None]]
+    escalated_tasks: list[tuple[TicketTask, str | None]],
 ) -> None:
     refreshed_tasks_by_email = await _fetch_existing_tasks_by_email(
         db, user_id, organization_id, email_ids
@@ -197,17 +194,48 @@ async def _process_fallback_escalation(
                 await db.flush()
             created_count += len(new_tasks)
         except IntegrityError:
+            # OPTIMIZATION: A concurrent process likely created some of these tasks.
+            # We fetch all currently existing tasks for our `new_tasks` list,
+            # filter them out, and bulk insert the truly new ones.
+            current_email_ids = [email.id for _, email, _ in new_tasks]
+            currently_existing = await _fetch_existing_tasks_by_email(
+                db, user_id, organization_id, current_email_ids
+            )
+
+            remaining_tasks = []
             for index, email, task in new_tasks:
-                task_or_none: TicketTask | None = task
+                if email.id in currently_existing:
+                    # We know this one conflicted.
+                    conflicted_email_ids.append(email.id)
+                    fallback_entries[index] = (email, None)
+                    if hasattr(db, "expunge"):
+                        db.expunge(task)
+                else:
+                    remaining_tasks.append((index, email, task))
+
+            if remaining_tasks:
+                # Highly likely the remaining tasks can now be bulk inserted.
                 try:
                     async with db.begin_nested():
-                        db.add(task)
+                        for _, _, task in remaining_tasks:
+                            db.add(task)
                         await db.flush()
-                    created_count += 1
+                    created_count += len(remaining_tasks)
                 except IntegrityError:
-                    conflicted_email_ids.append(email.id)
-                    task_or_none = None
-                fallback_entries[index] = (email, task_or_none)
+                    # Rare extreme concurrency: fallback to individual inserts.
+                    for index, email, task in remaining_tasks:
+                        task_or_none: TicketTask | None = task
+                        try:
+                            async with db.begin_nested():
+                                db.add(task)
+                                await db.flush()
+                            created_count += 1
+                        except IntegrityError:
+                            conflicted_email_ids.append(email.id)
+                            task_or_none = None
+                            if hasattr(db, "expunge"):
+                                db.expunge(task)
+                        fallback_entries[index] = (email, task_or_none)
 
     if conflicted_email_ids:
         conflicted_tasks_by_email = await _fetch_existing_tasks_by_email(
@@ -229,9 +257,7 @@ async def _process_fallback_escalation(
             fallback_entries[index] = (email, task)
 
     escalated_tasks.extend(
-        (task, email.message_id)
-        for email, task in fallback_entries
-        if task is not None
+        (task, email.message_id) for email, task in fallback_entries if task is not None
     )
 
     if created_count > 0 or any(t.status != "done" for t, _ in escalated_tasks):
