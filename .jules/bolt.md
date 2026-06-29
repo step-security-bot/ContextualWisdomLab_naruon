@@ -81,3 +81,7 @@
 ## 2026-06-24 - Defer large SQLAlchemy vector payloads
 **Learning:** Mapping large `Vector(1536)` embedding columns as eager default loads inflates row payloads and network transfer for routine list/detail queries that do not need the vector values.
 **Action:** Mark large embedding columns with `deferred=True` when callers rarely need them by default, and use explicit undefer/loading options only in code paths that intentionally consume embeddings. Avoid describing this as an N+1 fix; deferred columns can create extra SELECTs if accessed later in a loop.
+
+## 2026-06-25 - React useMemo on complex mapped elements
+**Learning:** In frontend components with large local lists (like \`SearchLayout.tsx\` returning search results), mapping over filtered results to generate JSX directly in the render body creates unnecessary O(N) evaluation and DOM reconciliation overhead on every unrelated state change (like typing in a search input).
+**Action:** Wrap complex map operations for lists in \`useMemo\` hooks and include the appropriate dependency array elements to bypass unnecessary evaluation during render cycles.
