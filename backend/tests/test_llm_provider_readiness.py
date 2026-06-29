@@ -1,4 +1,5 @@
 import pytest
+
 from db.models import LLMProvider
 from services.llm_provider_readiness import (
     is_llm_provider_configured,
@@ -15,28 +16,38 @@ from services.llm_provider_readiness import (
         (None, "openai", None, None, False),
         ("", "openai", None, None, False),
         ("   ", "openai", None, None, False),
-
         # Local providers
         (None, "ollama", "http://localhost:11434", "llama3", True),
         (None, "vllm", "http://localhost:8000", "mistral", True),
         (None, "local", "http://localhost:8000", "model", True),
         (None, "openai-compatible-local", "http://localhost:8000", "model", True),
-
         # Local provider missing base_url or model_identifier
         (None, "ollama", None, "llama3", False),
         (None, "ollama", "http://localhost:11434", None, False),
         (None, "ollama", None, None, False),
         (None, "ollama", "", "llama3", False),
         (None, "ollama", "http://localhost:11434", "   ", False),
-
         # Provider type edge cases (whitespace, casing)
         (None, " OLLAMA ", "http://url", "model", True),
         (None, " Vllm ", "http://url", "model", True),
-        (None, "unknown-local", "http://url", "model", False),  # Not in LOCAL_PROVIDER_TYPES
-
+        (
+            None,
+            "unknown-local",
+            "http://url",
+            "model",
+            False,
+        ),  # Not in LOCAL_PROVIDER_TYPES
         # API key provided for local (should just return True fast)
         ("api-key-for-local", "ollama", None, None, True),
-    ]
+        # Edge cases for provider_type being None
+        ("some-api-key", None, None, None, True),
+        (None, None, "http://localhost:11434", "llama3", False),
+        # Edge cases for whitespace-only strings
+        (None, "ollama", "   ", "llama3", False),
+        (None, "ollama", "http://localhost", "   ", False),
+        # Provider type non-string (should be caught by type hints, but None is possible)
+        ("valid-key", None, "http://localhost", "model", True),
+    ],
 )
 def test_is_llm_provider_configured(
     api_key, provider_type, base_url, model_identifier, expected
@@ -62,7 +73,7 @@ def test_is_llm_provider_configured(
         ("openai", None, "openai"),
         ("openai", "", "openai"),
         ("openai", "   ", "openai"),
-    ]
+    ],
 )
 def test_llm_provider_model_label(provider_type, model_identifier, expected):
     provider = LLMProvider(

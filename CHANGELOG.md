@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Added
+- `is_llm_provider_configured` 함수에 대한 테스트 케이스를 추가하여 `provider_type`이 `None`이거나 whitespace만 있는 `base_url` 등 엣지 케이스를 커버하도록 개선했습니다.
+
 ## [0.14.4] - 2026-06-18
 
 ### 추가
