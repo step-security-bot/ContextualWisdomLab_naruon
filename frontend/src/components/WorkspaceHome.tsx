@@ -11,6 +11,7 @@ import { CalendarDays, CheckCircle2, Inbox, Network, Send, Settings, Sparkles } 
 import { apiClient } from '@/lib/api-client';
 import { setMobileWorkspaceView, useMobileWorkspaceView } from '@/lib/mobile-workspace';
 import { toSafeReactText } from '@/lib/safe-text';
+import { useTasks, type TaskItem } from '@/hooks/useTasks';
 import { setWorkspaceStartupView, useWorkspaceStartupView, type WorkspaceStartupView } from '@/lib/workspace-preferences';
 import { MobileCalendarPanel, MobileSearchPanel } from '@/components/mobile-workspace-panels';
 const NetworkGraph = dynamic(() => import('@/components/NetworkGraph'), { ssr: false });
@@ -54,15 +55,6 @@ function useStartupSearch(query: string, limit: number) {
   return { results, status };
 }
 
-type TaskItem = {
-  id: string;
-  title: string;
-  status: 'open' | 'in_progress' | 'blocked' | 'done';
-  priority: 'low' | 'normal' | 'high' | 'urgent';
-  created_at: string;
-  updated_at: string;
-};
-
 type CalendarWritebackSource = {
   source_id: string;
   provider?: string;
@@ -76,14 +68,6 @@ type ProjectFolder = {
   folder_uid: string;
   project_name?: string;
   webdav_path?: string;
-};
-
-type ReplySlaEscalationResponse = {
-  evaluated: number;
-  created: number;
-  policy: {
-    overdue_hours: number;
-  };
 };
 
 const dashboardQuickActions = [
@@ -259,9 +243,7 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
   const calendarCandidateEvidence = useStartupSearch('일정 충돌 일정 조율 회의 후보', 3);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentTimestamp, setCurrentTimestamp] = useState('');
-  const [replySlaStatus, setReplySlaStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [replySlaMessage, setReplySlaMessage] = useState<string | null>(null);
-  const [taskUpdateStatusById, setTaskUpdateStatusById] = useState<Map<string, string>>(() => new Map());
+  const { taskUpdateStatusById, replySlaStatus, replySlaMessage, handleTaskCompletionToggle, handleReplySlaEscalation } = useTasks(tasks, setDashboardTasks);
   const settingsMenuId = 'workspace-startup-settings-menu';
   const unreadCount = emails.filter((e) => e.unread).length;
   const pendingReplyCount = pendingReplies.length;
@@ -308,62 +290,6 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
       case 'normal': return '보통';
       case 'low': return '낮음';
       default: return p;
-    }
-  };
-
-  const handleTaskCompletionToggle = async (task: TaskItem) => {
-    const nextStatus: TaskItem['status'] = task.status === 'done' ? 'open' : 'done';
-    const displayTitle = safeWorkspaceTitle(task.title, '제목 없는 작업');
-    setTaskUpdateStatusById((currentStatuses) => {
-      const nextStatuses = new Map(currentStatuses);
-      nextStatuses.delete(task.id);
-      return nextStatuses;
-    });
-    setDashboardTasks((currentTasks) =>
-      currentTasks.map((currentTask) => (
-        currentTask.id === task.id
-          ? { ...currentTask, status: nextStatus, updated_at: new Date().toISOString() }
-          : currentTask
-      )),
-    );
-    try {
-      const updatedTask = await apiClient.patch<TaskItem>(
-        `/api/tasks/${encodeURIComponent(task.id)}`,
-        { status: nextStatus },
-      );
-      setDashboardTasks((currentTasks) =>
-        currentTasks.map((currentTask) => (currentTask.id === updatedTask.id ? updatedTask : currentTask)),
-      );
-      setTaskUpdateStatusById((currentStatuses) => {
-        const nextStatuses = new Map(currentStatuses);
-        nextStatuses.set(task.id, `${displayTitle} 작업을 완료 처리했습니다.`);
-        return nextStatuses;
-      });
-    } catch {
-      setDashboardTasks((currentTasks) =>
-        currentTasks.map((currentTask) => (currentTask.id === task.id ? task : currentTask)),
-      );
-      setTaskUpdateStatusById((currentStatuses) => {
-        const nextStatuses = new Map(currentStatuses);
-        nextStatuses.set(task.id, `${displayTitle} 작업 상태 변경에 실패했습니다.`);
-        return nextStatuses;
-      });
-    }
-  };
-
-  const handleReplySlaEscalation = async () => {
-    setReplySlaStatus('loading');
-    setReplySlaMessage(null);
-    try {
-      const result = await apiClient.post<ReplySlaEscalationResponse>(
-        '/api/tasks/reply-sla-escalations',
-        { overdue_hours: 48 },
-      );
-      setReplySlaStatus('ready');
-      setReplySlaMessage(`${result.created}개 팔로업 작업 생성, ${result.evaluated}개 답변 대기 확인`);
-    } catch {
-      setReplySlaStatus('error');
-      setReplySlaMessage('미답변 팔로업 작업 생성 실패');
     }
   };
 
